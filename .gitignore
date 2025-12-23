@@ -1,0 +1,23 @@
+# .gitignore
+# Datos y cachés
+data/
+chroma_db/
+__pycache__/
+*.py[cod]
+*.pdf  # No versiones los PDFs de usuario
+
+# Entornos y configuraciones
+.env
+.venv/
+venv/
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Sistema
+.DS_Store
+Thumbs.db
