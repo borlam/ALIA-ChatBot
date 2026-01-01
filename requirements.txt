@@ -1,32 +1,35 @@
-# requirements.txt - VERSIÓN QUE SÍ FUNCIONA EN COLAB
-# Nota: Necesita swig instalado primero
+# requirements.txt - VERSIÓN SIMPLE Y FUNCIONAL
+# Instalación: pip install -r requirements.txt
 
-torch==2.3.0
-torchvision==0.18.0
-torchaudio==2.3.0
+# PyTorch
+torch
+torchvision
+torchaudio
 --index-url https://download.pytorch.org/whl/cu118
 
-transformers>=4.36.0
-sentence-transformers>=2.2.2
-accelerate>=0.24.0
+# NLP
+transformers
+sentence-transformers
+accelerate
 
-# PyMuPDF se instala después de instalar swig
-# !apt-get install -y swig
-# !pip install PyMuPDF==1.23.8
+# PDF (nota: necesita swig instalado primero)
+PyMuPDF
+pypdf
+pdfplumber
+PyPDF2
 
-pypdf>=3.17.0
-pdfplumber>=0.10.0
-PyPDF2>=3.0.1
-
+# Vector DB
 chromadb==0.4.22
-sentencepiece>=0.1.99
-protobuf>=3.20.0
+sentencepiece
+protobuf
 
+# UI
 gradio==4.12.0
 
-numpy>=1.24.0
-pandas>=2.0.0
-tqdm>=4.66.0
-python-dotenv>=1.0.0
-huggingface-hub>=0.20.0
-scipy>=1.11.0
+# Utils
+numpy
+pandas
+tqdm
+python-dotenv
+huggingface-hub
+scipy
