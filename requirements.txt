@@ -6,7 +6,7 @@ torchaudio==2.3.0
 
 transformers
 sentence-transformers
-chromadb==0.4.22
+chromadb
 pypdf
 PyPDF2
 pdfplumber
