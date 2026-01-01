@@ -1,32 +1,31 @@
-# requirements.txt
+# requirements.txt - Versiones compatibles con Colab Python 3.12
 torch==2.3.0
 torchvision==0.18.0
 torchaudio==2.3.0
 --index-url https://download.pytorch.org/whl/cu118
 
-# Transformers - versión compatible con Python 3.12
+# Hugging Face - usar >= en lugar de == para mayor compatibilidad
 transformers>=4.36.0
-
-# Sentence transformers y modelos
-sentence-transformers>=2.2.0
+sentence-transformers>=2.2.2
 accelerate>=0.24.0
 bitsandbytes>=0.41.0
 
-# Procesamiento de PDFs (IMPORTANTE: fitz viene de pymupdf)
+# PDF Processing
 pymupdf>=1.23.0  # Proporciona 'fitz'
-pypdf>=3.0.0
+pypdf>=3.17.0
 pdfplumber>=0.10.0
-PyPDF2>=3.0.0
+PyPDF2>=3.0.1
 
-# Base de datos vectorial
+# Vector Database
 chromadb==0.4.22
 sentencepiece>=0.1.99
 
-# Interfaz
+# Interface
 gradio>=4.12.0
 
-# Utilidades
+# Utilities
 numpy>=1.24.0
 pandas>=2.0.0
-tqdm>=4.65.0
+tqdm>=4.66.0
 python-dotenv>=1.0.0
+huggingface-hub>=0.20.0
