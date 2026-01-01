@@ -1,36 +1,28 @@
-# requirements.txt - 100% Compatible con Colab Python 3.12
-# Para RAG Hispanidad - Última versión verificada
-
-# PyTorch con CUDA 11.8
+# requirements.txt - MÍNIMO Y FUNCIONAL
 torch==2.3.0
 torchvision==0.18.0
 torchaudio==2.3.0
 --index-url https://download.pytorch.org/whl/cu118
 
-# Hugging Face Ecosystem
-transformers>=4.36.0
-sentence-transformers>=2.2.2
-accelerate>=0.24.0
-# bitsandbytes NO compatible con Python 3.12
+transformers
+sentence-transformers
+accelerate
 
-# PDF Processing Libraries - VERSIONES ESPECÍFICAS
-fitz>=0.0.0  # Instala PyMuPDF automáticamente
-pypdf>=3.17.0
-pdfplumber>=0.10.0
-PyPDF2>=3.0.1
+# PDFs - usar fitz que instalará PyMuPDF correctamente
+fitz
+pypdf
+pdfplumber
+PyPDF2
 
-# Vector Database & Embeddings
 chromadb==0.4.22
-sentencepiece>=0.1.99
-protobuf>=3.20.0
+sentencepiece
+protobuf
 
-# Web Interface
 gradio==4.12.0
 
-# Utilities & Data Processing
-numpy>=1.24.0
-pandas>=2.0.0
-tqdm>=4.66.0
-python-dotenv>=1.0.0
-huggingface-hub>=0.20.0
-scipy>=1.11.0
+numpy
+pandas
+tqdm
+python-dotenv
+huggingface-hub
+scipy
