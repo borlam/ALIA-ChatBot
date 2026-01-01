@@ -1,34 +1,29 @@
-# requirements.txt - VERIFICADO PARA COLAB PYTHON 3.12
-# Para RAG Hispanidad
+# requirements.txt - VERSIÓN QUE SÍ FUNCIONA EN COLAB
+# Nota: Necesita swig instalado primero
 
-# PyTorch con CUDA 11.8
 torch==2.3.0
 torchvision==0.18.0
 torchaudio==2.3.0
 --index-url https://download.pytorch.org/whl/cu118
 
-# Hugging Face
 transformers>=4.36.0
 sentence-transformers>=2.2.2
 accelerate>=0.24.0
 
-# PDF Processing - PyMuPDF desde GitHub (SOLUCIÓN)
-https://github.com/pymupdf/PyMuPDF/archive/refs/tags/1.23.8.zip
+# PyMuPDF se instala después de instalar swig
+# !apt-get install -y swig
+# !pip install PyMuPDF==1.23.8
 
-# Otros procesadores PDF
 pypdf>=3.17.0
 pdfplumber>=0.10.0
 PyPDF2>=3.0.1
 
-# Vector Database
 chromadb==0.4.22
 sentencepiece>=0.1.99
 protobuf>=3.20.0
 
-# Interface
 gradio==4.12.0
 
-# Utilities
 numpy>=1.24.0
 pandas>=2.0.0
 tqdm>=4.66.0
