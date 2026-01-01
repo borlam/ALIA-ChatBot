@@ -1,10 +1,29 @@
-# requirements.txt
-langchain==0.1.0
-langchain-community==0.0.10
-chromadb==0.4.22
-pypdf==3.17.0
+# requirements.txt para RAG Hispanidad
+torch==2.3.0
+torchvision==0.18.0
+torchaudio==2.3.0
+--index-url https://download.pytorch.org/whl/cu118
+
+transformers==4.37.2
 sentence-transformers==2.2.2
-huggingface-hub==0.20.3
-ipywidgets==8.1.1
+accelerate==0.26.1
+bitsandbytes==0.41.3
+
+# Procesamiento de PDFs
+pymupdf==1.23.8  # Este es fitz (MUY IMPORTANTE)
+pypdf==3.17.0
+pdfplumber==0.10.3
+PyPDF2==3.0.1
+
+# Base de datos vectorial
+chromadb==0.4.22
+sentencepiece==0.1.99
+
+# Interfaz
+gradio==4.12.0
+
+# Utilidades
+numpy==1.24.3
+pandas==2.1.4
+tqdm==4.66.1
 python-dotenv==1.0.0
-torch>=2.3.0  # Dependiendo del modelo ALIA
