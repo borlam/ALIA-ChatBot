@@ -11,8 +11,8 @@ PDF_STORAGE_PATH = f"{DRIVE_PATH}/pdf_storage"
 # Modelos
 MODEL_NAME = "BSC-LT/salamandra-2b-instruct"
 # Para usar 7B: os.environ["MODEL_SIZE"] = "BSC-LT/salamandra-7b-instruct"
-EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-# EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+# EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
 
 # Configuración de chunks
 CHUNK_SIZE = 1500
