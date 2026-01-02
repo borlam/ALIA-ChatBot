@@ -12,14 +12,6 @@ transformers>=4.36.0
 sentence-transformers>=2.2.2
 accelerate>=0.24.0
 
-# PDF Processing (IMPORTANTE: pymupdf en minúscula)
-PyPDF2
-pdfplumber
-pymupdf
-Pillow
-
-# Vector Database Alternative (ChromaDB no disponible para Python 3.12)
-faiss-cpu>=1.7.4  # Alternativa a ChromaDB
 # qdrant-client>=1.6.0  # Otra alternativa opcional
 
 # Web Interface
