@@ -1,17 +1,36 @@
-# requirements.txt - COPIADO DE TU NOTEBOOK FUNCIONANTE
+# requirements.txt - Para RAG Hispanidad en Python 3.12
+# Nota: ChromaDB no está disponible para Python 3.12, usar FAISS
+
+# PyTorch con CUDA 11.8 (Colab compatible)
 torch==2.3.0
 torchvision==0.18.0
 torchaudio==2.3.0
 --index-url https://download.pytorch.org/whl/cu118
 
-transformers
-sentence-transformers
-chromadb
-pypdf
-PyPDF2
-pdfplumber
-pymupdf  # ¡MINÚSCULA! Esto es lo importante
-Pillow
+# Hugging Face ecosystem
+transformers>=4.36.0
+sentence-transformers>=2.2.2
+accelerate>=0.24.0
+
+# PDF Processing (IMPORTANTE: pymupdf en minúscula)
+pypdf>=3.17.0
+PyPDF2>=3.0.1
+pdfplumber>=0.10.0
+pymupdf>=1.23.0
+Pillow>=10.0.0
+
+# Vector Database Alternative (ChromaDB no disponible para Python 3.12)
+faiss-cpu>=1.7.4  # Alternativa a ChromaDB
+# qdrant-client>=1.6.0  # Otra alternativa opcional
+
+# Web Interface
 gradio==4.12.0
-accelerate
-bitsandbytes
+
+# Utilities
+numpy>=1.24.0
+pandas>=2.0.0
+tqdm>=4.66.0
+python-dotenv>=1.0.0
+huggingface-hub>=0.20.0
+scipy>=1.11.0
+protobuf>=3.20.0
