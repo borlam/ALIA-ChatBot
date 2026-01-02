@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Sistema RAG principal que coordina todos los componentes"""
-
+import torch  # ¡AÑADIR ESTO!
 from datetime import datetime
 from typing import List, Dict
 from .pdf_manager import PDFManager
