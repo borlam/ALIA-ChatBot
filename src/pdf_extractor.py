@@ -1,3 +1,17 @@
+import pytesseract
+from PIL import Image
+import io
+OCR_AVAILABLE = True
+except ImportError:
+OCR_AVAILABLE = False
+
+class SmartPDFExtractor:
+def init(self):
+    print("📄 Extractor de PDFs inicializado")
+if OCR_AVAILABLE:
+    print("✅ OCR disponible para PDFs escaneados")
+else:
+    print("⚠️ OCR no disponible (instala pytesseract y Pillow para PDFs escaneados)")
 def extract_with_pymupdf(self, pdf_path: str) -> Tuple[str, Dict]:
     text = ""
     metadata = {}
