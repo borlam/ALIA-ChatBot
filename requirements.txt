@@ -18,6 +18,7 @@ accelerate>=0.24.0
 gradio==4.12.0
 
 # Utilities
+pytesseract
 numpy>=1.24.0
 pandas>=2.0.0
 tqdm>=4.66.0
