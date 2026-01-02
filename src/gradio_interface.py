@@ -155,6 +155,30 @@ class GradioInterface:
 
         return demo
 
+    def format_stats_detailed(self, stats):
+        """Formatea las estadísticas para mostrar en la interfaz"""
+        if not stats:
+            return "📊 Estadísticas no disponibles"
+        
+        return f"""📊 **ESTADO DEL SISTEMA**
+
+**📚 DOCUMENTOS:**
+• PDFs procesados: {stats.get('total_pdfs', 0)}
+• Páginas totales: {stats.get('total_pages', 0):,}
+• Chunks indexados: {stats.get('total_chunks', 0):,}
+
+**⚙️ HARDWARE:**
+• GPU: {'✅ NVIDIA ' + torch.cuda.get_device_name(0) if torch.cuda.is_available() else '❌ CPU'}
+• Memoria GPU: {torch.cuda.memory_allocated()/1e9:.1f}GB / {torch.cuda.get_device_properties(0).total_memory/1e9:.1f}GB
+
+**🔄 ÚLTIMA ACTUALIZACIÓN:**
+{stats.get('last_update', '')}"""
+
+    def get_system_stats(self):
+        """Obtiene y formatea las estadísticas del sistema"""
+        stats = self.rag.get_system_info()
+        return self.format_stats_detailed(stats)
+
     def chat_function(self, message: str, history: List, max_chars: int):
         """Función principal del chat"""
         print(f"\n{'='*60}")
@@ -242,14 +266,29 @@ class GradioInterface:
         """Función de prueba del sistema"""
         print(f"\n🧪 PRUEBA DEL SISTEMA: '{message}'")
 
-        test_response = f"""🧪 **Prueba del sistema completada**
+        try:
+            # Verificar componentes
+            stats = self.rag.get_system_info()
+            
+            test_response = f"""🧪 **Prueba del sistema completada**
 
 ✅ **Componentes verificados:**
-• Modelo salamandra-2b: {'🟢 Operativo' if self.rag.chat_engine.model else '🔴 No disponible'}
-• Base de vectores: {self.rag.vector_store.get_stats().get('total_chunks', 0):,} chunks
-• Embeddings: {'🟢 Operativo' if self.rag.chat_engine.embedder else '🔴 No disponible'}
+• Modelo salamandra-2b: {'🟢 Operativo' if hasattr(self.rag, 'chat_engine') and self.rag.chat_engine.model else '🔴 No disponible'}
+• Base de vectores: {stats.get('total_chunks', 0):,} chunks
+• Embeddings: {'🟢 Operativo' if hasattr(self.rag, 'chat_engine') and self.rag.chat_engine.embedder else '🔴 No disponible'}
 • GPU: {'🟢 Disponible' if torch.cuda.is_available() else '🟡 Solo CPU'}
 
 📊 **Estadísticas actuales:**
-{self.rag.get_system_info().get('total_pdfs', 0)} PDFs procesados
-{self
+• PDFs procesados: {stats.get('total_pdfs', 0)}
+• Chunks indexados: {stats.get('total_chunks', 0):,}
+• Última actualización: {stats.get('last_update', 'N/A')}
+
+💡 **Sistema listo para usar.**"""
+            
+            history.append([message, test_response])
+            return history, ""
+            
+        except Exception as e:
+            error_msg = f"❌ Error en prueba del sistema: {str(e)[:100]}"
+            history.append([message, error_msg])
+            return history, ""
