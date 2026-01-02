@@ -13,7 +13,7 @@ sentence-transformers>=2.2.2
 accelerate>=0.24.0
 
 # PDF Processing (IMPORTANTE: pymupdf en minúscula)
-pypdf>=3.17.0
+pypdf
 PyPDF2>=3.0.1
 pdfplumber>=0.10.0
 pymupdf>=1.23.0
