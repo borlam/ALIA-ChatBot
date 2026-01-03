@@ -214,7 +214,7 @@ class ChatEngine:
         print(f"📚 Analizando {len(documents)} documentos COMPLETOS...")
         
         question_keywords = self.extract_keywords(question)
-        print(f"   Keywords identificadas: {', '.join(question_keywords[:5])}...")
+        print(f"   KeyworFds identificadas: {', '.join(question_keywords[:5])}...")
         
         # Analizar TODOS los documentos
         all_analyses = []
@@ -327,7 +327,7 @@ Como historiador experto, SÍGUETE estos pasos:
 **Análisis crítico**: [Interpretación historiográfica]
 **Conclusión**: [Síntesis final]
 
-### RESPUESTA DEL regerIA:
+### RESPUESTA DE regerIA:
 """
         
         # 3. CALCULAR LÍMITES DE TOKENS
@@ -369,7 +369,7 @@ Como historiador experto, SÍGUETE estos pasos:
         raw_response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
         
         # Extraer solo la parte después del marcador
-        response_marker = "RESPUESTA DEL DR. MARTÍNEZ:"
+        response_marker = "RESPUESTA DE regerIA:"
         if response_marker in raw_response:
             response = raw_response.split(response_marker)[-1].strip()
         else:
