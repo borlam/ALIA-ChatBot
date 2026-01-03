@@ -280,7 +280,7 @@ class ChatEngine:
         
         # 2. PROMPT PARA ANÁLISIS PROFUNDO
         prompt = f"""### ROL Y CONTEXTO:
-Eres el Dr. Alejandro Martínez, historiador senior especializado en historia hispanoamericana colonial.
+Eres la Inteligencia Artifical regerIA, especializada en historia hispanoamericana virreinal.
 Tienes acceso a tu conocimiento académico general Y a una colección de documentos históricos que has analizado meticulosamente.
 
 ### PREGUNTA DE INVESTIGACIÓN:
@@ -327,7 +327,7 @@ Como historiador experto, SÍGUETE estos pasos:
 **Análisis crítico**: [Interpretación historiográfica]
 **Conclusión**: [Síntesis final]
 
-### RESPUESTA DEL DR. MARTÍNEZ:
+### RESPUESTA DEL regerIA:
 """
         
         # 3. CALCULAR LÍMITES DE TOKENS
