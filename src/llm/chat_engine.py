@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Motor de chat MEJORADO con corrección automática y precisión histórica"""
+"""Motor de chat MEJORADO - Versión 2 con filtros y validación"""
 
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
@@ -35,301 +35,403 @@ class ChatEngine:
         
         print(f"✅ Modelo 7B cargado en modo optimizado")
         
-        # Diccionario de correcciones comunes
+        # Diccionario de correcciones más completo
         self.common_corrections = {
             "treces colonias": "trece colonias",
-            "las treces colinias": "las trece colonias",
+            "treces colinias": "trece colonias", 
+            "trece colonías": "trece colonias",
             "eslavos": "esclavos",
             "hispanoamericanavirreinal": "hispanoamericana virreinal",
-            "virreinal": "virreinal",
-            "conquista": "conquista",
-            "descubrimiento": "descubrimiento",
+            "creole": "criolla",
+            "norteamérica": "Norteamérica",
+            "florida": "Florida",
+            "luisiana": "Luisiana",
             "moctezuma": "Moctezuma",
-            "cortés": "Cortés",
-            "inca": "inca",
-            "azteca": "azteca",
-            "maya": "maya"
+            "cortés": "Hernán Cortés",
+            "pizarro": "Francisco Pizarro",
+            "magallanes": "Magallanes"
+        }
+        
+        # Términos históricos clave para validación
+        self.historical_validation_terms = {
+            'esclavos fugitivos': ['cimarrones', 'Fort Mose', '1738', 'Florida', 'libertos'],
+            'trece colonias': ['británicas', 'inglesas', 'EE.UU.', 'Estados Unidos', 'colonial'],
+            'españa': ['decreto 1693', 'catolicismo', 'conversión', 'asilo', 'territorios españoles']
         }
     
     def correct_question(self, question: str) -> str:
-        """Corrige automáticamente errores comunes en la pregunta"""
-        corrected = question.lower()
+        """Corrige automáticamente errores comunes"""
+        corrected = question
         
         for wrong, right in self.common_corrections.items():
-            if wrong in corrected:
-                # Usar regex para reemplazar manteniendo mayúsculas iniciales
-                corrected = re.sub(
-                    re.escape(wrong), 
-                    lambda m: right if m.group().islower() else right.title(),
-                    corrected,
-                    flags=re.IGNORECASE
-                )
+            # Buscar con regex insensible a mayúsculas/minúsculas
+            pattern = re.compile(re.escape(wrong), re.IGNORECASE)
+            corrected = pattern.sub(right, corrected)
         
         return corrected
     
-    def extract_key_concepts(self, question: str) -> List[str]:
-        """Extrae conceptos clave para búsqueda contextual"""
-        question_lower = question.lower()
-        concepts = []
-        
-        # Conceptos históricos
-        historical_terms = [
-            'esclavos', 'esclavitud', 'esclavo fugitivo',
-            'trece colonias', 'colonias británicas',
-            'españa', 'territorios españoles', 'florida', 'luisiana',
-            'libertad', 'asilo', 'decreto', 'ley',
-            'virreinal', 'colonial', 'conquista', 'descubrimiento',
-            'cimarrones', 'libertos', 'fort mose',
-            'siglo xvii', 'siglo xviii', '1693', '1738'
-        ]
-        
-        for term in historical_terms:
-            if term in question_lower:
-                concepts.append(term)
-        
-        # Extraer nombres propios (capitalizados)
-        words = question.split()
-        for word in words:
-            if word[0].isupper() and len(word) > 2:
-                concepts.append(word.lower())
-        
-        return list(set(concepts))
-    
-    def build_intelligent_context(self, question: str, documents: List[Dict]) -> str:
-        """
-        Construye contexto INTELIGENTE priorizando documentos relevantes
-        """
+    def filter_context_documents(self, question: str, documents: List[Dict]) -> List[Dict]:
+        """Filtra documentos para incluir solo los relevantes"""
         if not documents:
-            return "No hay documentos relevantes para esta pregunta."
+            return []
         
-        # Extraer conceptos clave de la pregunta
-        key_concepts = self.extract_key_concepts(question)
+        question_lower = question.lower()
+        relevant_docs = []
         
-        # Clasificar documentos por relevancia
-        scored_docs = []
+        # Palabras clave específicas para esta pregunta
+        key_terms = ['esclavo', 'esclavitud', 'fugitivo', 'cimarrón', 
+                    'libertad', 'españa', 'florida', 'decreto', '1693',
+                    'fort mose', 'trece colonias', 'británico', 'asilo']
+        
         for doc in documents:
+            doc_text_lower = doc.get('text', '').lower()
+            doc_metadata = doc.get('enriched_metadata', {})
+            doc_themes = doc_metadata.get('themes', [])
+            
+            # Calcular puntuación de relevancia
             score = 0
-            doc_text_lower = doc['text'].lower()
             
-            # Puntuar por conceptos clave
-            for concept in key_concepts:
-                if concept in doc_text_lower:
-                    score += 3  # Concepto principal
-                elif any(word in doc_text_lower for word in concept.split()):
-                    score += 1  # Palabra relacionada
+            # 1. Coincidencia directa con términos clave
+            for term in key_terms:
+                if term in doc_text_lower:
+                    score += 3
             
-            # Bonus por metadatos enriquecidos
-            enriched = doc.get('enriched_metadata', {})
-            if enriched.get('themes'):
-                doc_themes_lower = [t.lower() for t in enriched['themes']]
-                for concept in key_concepts:
-                    if any(concept in theme for theme in doc_themes_lower):
+            # 2. Coincidencia con temas del documento
+            for theme in doc_themes:
+                theme_lower = theme.lower()
+                for term in key_terms:
+                    if term in theme_lower:
                         score += 2
             
-            scored_docs.append((score, doc))
+            # 3. Coincidencia con la pregunta
+            question_words = set(question_lower.split())
+            doc_words = set(doc_text_lower.split())
+            common_words = question_words.intersection(doc_words)
+            if len(common_words) > 2:
+                score += len(common_words)
+            
+            # Solo incluir si tiene puntuación suficiente
+            if score >= 3:
+                relevant_docs.append({
+                    'doc': doc,
+                    'score': score,
+                    'reasons': f"Coincidencias: {score} puntos"
+                })
         
         # Ordenar por relevancia
-        scored_docs.sort(key=lambda x: x[0], reverse=True)
+        relevant_docs.sort(key=lambda x: x['score'], reverse=True)
         
-        # Construir contexto
-        context_parts = []
-        context_parts.append("### 📚 INFORMACIÓN DOCUMENTAL RELEVANTE:")
+        # Devolver solo los documentos (sin metadatos de scoring)
+        return [item['doc'] for item in relevant_docs[:3]]  # Máximo 3 documentos
+    
+    def build_clean_context(self, question: str, documents: List[Dict]) -> str:
+        """Construye contexto limpio y relevante"""
         
-        for i, (score, doc) in enumerate(scored_docs[:3]):  # Top 3 más relevantes
-            if score < 1:  # Si no es muy relevante, omitir
-                continue
-                
+        filtered_docs = self.filter_context_documents(question, documents)
+        
+        if not filtered_docs:
+            return "No se encontraron documentos específicamente relevantes para esta pregunta."
+        
+        context_parts = ["### INFORMACIÓN DOCUMENTAL RELEVANTE:"]
+        
+        for i, doc in enumerate(filtered_docs):
             source = doc.get('pdf_title', doc.get('filename', f'Documento {i+1}'))
-            text_preview = self._extract_most_relevant_snippet(doc['text'], key_concepts)
             
-            context_parts.append(f"\n**{source}** (relevancia: {score}/10)")
+            # Extraer el fragmento más relevante
+            relevant_text = self.extract_relevant_snippet(doc.get('text', ''), question)
             
-            if text_preview:
-                context_parts.append(f"*Extracto relevante:* {text_preview}")
+            context_parts.append(f"\n📄 **{source}**")
+            context_parts.append(f"*Extracto:* {relevant_text}")
             
-            # Añadir metadatos enriquecidos si existen
+            # Añadir metadatos útiles si existen
             enriched = doc.get('enriched_metadata', {})
-            if enriched.get('themes'):
-                themes = enriched['themes'][:3]
-                context_parts.append(f"*Temas:* {', '.join(themes)}")
-            
             if enriched.get('key_dates'):
-                dates = enriched['key_dates'][:2]
-                context_parts.append(f"*Fechas clave:* {', '.join(dates)}")
+                dates = ', '.join(enriched['key_dates'][:2])
+                context_parts.append(f"*Fechas relevantes:* {dates}")
             
-            if i < len(scored_docs[:3]) - 1:
+            if i < len(filtered_docs) - 1:
                 context_parts.append("---")
-        
-        # Si no hay documentos muy relevantes
-        if len(context_parts) == 1:  # Solo el título
-            context_parts.append("\n(No se encontraron documentos altamente relevantes)")
         
         return '\n'.join(context_parts)
     
-    def _extract_most_relevant_snippet(self, text: str, key_concepts: List[str]) -> str:
+    def extract_relevant_snippet(self, text: str, question: str) -> str:
         """Extrae el fragmento más relevante del texto"""
+        # Limpiar texto
+        text = re.sub(r'\[\d+\]', '', text)  # Eliminar referencias [1], [2], etc
+        text = re.sub(r'\s+', ' ', text)     # Normalizar espacios
+        
         sentences = re.split(r'[.!?]+', text)
+        question_words = set(question.lower().split())
         
         best_sentence = ""
         best_score = 0
         
         for sentence in sentences:
-            if len(sentence) < 20 or len(sentence) > 300:
-                continue
+            if 30 < len(sentence) < 300:  # Frases de longitud razonable
+                sentence_lower = sentence.lower()
+                sentence_words = set(sentence_lower.split())
                 
-            sentence_lower = sentence.lower()
-            score = 0
-            
-            # Puntuar por conceptos clave
-            for concept in key_concepts:
-                if concept in sentence_lower:
-                    score += 3
-                elif any(word in sentence_lower for word in concept.split()):
-                    score += 1
-            
-            if score > best_score:
-                best_score = score
-                best_sentence = sentence.strip()
+                # Puntuar por palabras comunes con la pregunta
+                common_words = question_words.intersection(sentence_words)
+                score = len(common_words)
+                
+                # Bonus por términos históricos importantes
+                historical_terms = ['esclavo', 'libertad', 'españa', 'florida', 'decreto', 
+                                   'colonia', 'fugitivo', 'cimarrón', 'asilo', '1693']
+                score += sum(1 for term in historical_terms if term in sentence_lower)
+                
+                if score > best_score:
+                    best_score = score
+                    best_sentence = sentence.strip()
         
         if best_sentence:
-            return best_sentence[:250] + ("..." if len(best_sentence) > 250 else "")
+            # Limitar longitud y asegurar puntuación final
+            snippet = best_sentence[:200]
+            if len(best_sentence) > 200:
+                snippet += "..."
+            if snippet and snippet[-1] not in '.!?':
+                snippet += "."
+            return snippet
         
-        # Fallback: primeras frases
+        # Fallback: primeras frases coherentes
         for sentence in sentences:
-            if len(sentence) >= 50:
-                return sentence[:250] + "..." if len(sentence) > 250 else sentence
+            if len(sentence) > 50:
+                return sentence[:200] + ("..." if len(sentence) > 200 else "")
         
-        return text[:250] + "..." if len(text) > 250 else text
+        return text[:200] + "..." if len(text) > 200 else text
     
-    def build_optimized_prompt(self, question: str, context: str) -> str:
-        """Prompt optimizado para precisión histórica"""
+    def build_prompt(self, question: str, context: str) -> str:
+        """Construye prompt optimizado para calidad histórica"""
         
         corrected_question = self.correct_question(question)
         
-        return f"""Eres regerIA, un historiador especialista en historia colonial hispanoamericana con amplio conocimiento documental.
+        return f"""Eres un historiador especializado en el período colonial hispanoamericano.
 
-<CONTEXTO_DOCUMENTAL>
+<CONTEXTO_PROPORCIONADO>
 {context}
-</CONTEXTO_DOCUMENTAL>
+</CONTEXTO_PROPORCIONADO>
 
-<INSTRUCCIONES_DETALLADAS>
-1. **Precisión histórica**: Usa fechas, lugares y nombres específicos cuando sean relevantes
-2. **Corrección automática**: Si detectas errores en la pregunta, corrígelos sutilmente en tu respuesta
-3. **Citar fuentes**: Cuando uses información específica de los documentos, menciónalo implícitamente
-4. **Estructura clara**: 
-   - Comienza con una respuesta directa a la pregunta
-   - Proporciona contexto histórico relevante
-   - Incluye ejemplos específicos cuando sea posible
-   - Concluye con el significado histórico del tema
-5. **Evitar etiquetas**: No uses "Conclusión:", "Análisis:" como secciones separadas
-6. **Concisión**: Sé informativo pero conciso (400-600 palabras)
-</INSTRUCCIONES_DETALLADAS>
+<INSTRUCCIONES_ESTRICTAS>
+1. Responde ÚNICAMENTE en español, con claridad y precisión histórica.
+2. Usa información específica del contexto cuando sea aplicable.
+3. NO inventes fechas, nombres o eventos que no estén en el contexto.
+4. Si el contexto no proporciona información suficiente, di "Según el contexto disponible..." y responde de forma general.
+5. Evita completamente:
+   - Números entre corchetes como [1], [2], etc.
+   - Listas de referencias al final
+   - Texto entre paréntesis con números
+   - La palabra "Fuente:" seguida de números
+6. ESTRUCTURA tu respuesta:
+   - Párrafo 1: Respuesta directa a la pregunta
+   - Párrafo 2: Contexto histórico específico
+   - Párrafo 3: Ejemplos o casos relevantes
+   - Párrafo 4: Conclusión o significado histórico
+7. Sé conciso (3-4 párrafos máximo).
+8. Corrige sutilmente cualquier error en la pregunta original.
+</INSTRUCCIONES_ESTRICTAS>
 
-<FORMATO_DE_RESPUESTA>
-- Párrafo inicial: Respuesta directa y clara
-- Párrafos centrales: Contexto, ejemplos, detalles específicos
-- Párrafo final: Significado histórico y legado
-</FORMATO_DE_RESPUESTA>
+<FORMATO_PROHIBIDO>
+NO uses:
+- [cualquier número entre corchetes]
+- "Fuente: [números]"
+- Listas al final
+- Secciones con títulos como "Conclusión:"
+- Numeración de párrafos
+</FORMATO_PROHIBIDO>
 
-<CORRECCIONES_APLICABLES>
-Pregunta original: "{question}"
-Pregunta corregida: "{corrected_question}"
-</CORRECCIONES_APLICABLES>
-
-PREGUNTA A RESPONDER: {corrected_question}
+PREGUNTA: {corrected_question}
 
 RESPUESTA DEL HISTORIADOR:"""
     
-    def post_process_response(self, response: str, question: str) -> str:
-        """Post-procesa la respuesta para mejorar calidad"""
+    def clean_generated_response(self, raw_response: str) -> str:
+        """Limpia exhaustivamente la respuesta generada"""
         
-        # 1. Eliminar repeticiones del prompt
-        if "RESPUESTA DEL HISTORIADOR:" in response:
-            response = response.split("RESPUESTA DEL HISTORIADOR:")[-1].strip()
+        # 1. Extraer solo lo después de "RESPUESTA DEL HISTORIADOR:"
+        if "RESPUESTA DEL HISTORIADOR:" in raw_response:
+            response = raw_response.split("RESPUESTA DEL HISTORIADOR:")[-1].strip()
+        else:
+            response = raw_response
         
-        # 2. Limpiar marcas XML/HTML
-        response = re.sub(r'</?[^>]+>', '', response)
+        # 2. Eliminar patrones problemáticos
+        patterns_to_remove = [
+            r'\[\d+\]',  # [1], [2], etc.
+            r'Fuente:.*?\d',  # "Fuente: 6" o similar
+            r'\(\d+\)',  # (1), (2), etc.
+            r'Nota:.*',  # Notas al final
+            r'Referencias:.*',  # Referencias
+            r'\d+\.\s*$',  # Números al final de línea
+            r'[\x00-\x1F\x7F-\x9F]',  # Caracteres de control
+        ]
         
-        # 3. Unificar espacios
+        for pattern in patterns_to_remove:
+            response = re.sub(pattern, '', response)
+        
+        # 3. Eliminar líneas que sean solo números
+        lines = response.split('\n')
+        cleaned_lines = []
+        for line in lines:
+            stripped = line.strip()
+            # No incluir líneas que sean solo números o muy cortas sin sentido
+            if not stripped.isdigit() and len(stripped) > 10:
+                # Limpiar números al final de la línea
+                if stripped and stripped[-1].isdigit() and stripped[-2] == ' ':
+                    stripped = stripped[:-2].strip()
+                cleaned_lines.append(stripped)
+        
+        response = '\n'.join(cleaned_lines)
+        
+        # 4. Unificar espacios y saltos de línea
         response = re.sub(r'\s+', ' ', response)
-        
-        # 4. Corregir errores comunes en la respuesta
-        for wrong, right in self.common_corrections.items():
-            if wrong in response.lower():
-                # Reemplazar manteniendo capitalización
-                pattern = re.compile(re.escape(wrong), re.IGNORECASE)
-                response = pattern.sub(
-                    lambda m: right if m.group().islower() else right.title(),
-                    response
-                )
+        response = re.sub(r'\n\s*\n', '\n\n', response)
         
         # 5. Asegurar puntuación final
         if response and response[-1] not in '.!?':
             response = response + '.'
         
-        # 6. Limitar longitud razonable
-        if len(response) > 1200:
-            # Buscar un punto de corte natural
-            sentences = re.split(r'[.!?]+', response)
-            trimmed = ""
-            char_count = 0
-            for sentence in sentences:
-                if char_count + len(sentence) < 1100:
-                    trimmed += sentence + '.'
-                    char_count += len(sentence) + 1
-                else:
-                    break
-            if trimmed:
-                response = trimmed.strip()
+        # 6. Dividir en párrafos lógicos
+        sentences = re.split(r'(?<=[.!?])\s+', response)
+        paragraphs = []
+        current_paragraph = []
+        char_count = 0
         
-        return response.strip()
+        for sentence in sentences:
+            if not sentence.strip():
+                continue
+                
+            if char_count + len(sentence) < 400 and len(current_paragraph) < 4:
+                current_paragraph.append(sentence)
+                char_count += len(sentence)
+            else:
+                if current_paragraph:
+                    paragraphs.append(' '.join(current_paragraph))
+                current_paragraph = [sentence]
+                char_count = len(sentence)
+        
+        if current_paragraph:
+            paragraphs.append(' '.join(current_paragraph))
+        
+        # Limitar a 4 párrafos máximo
+        paragraphs = paragraphs[:4]
+        
+        # 7. Aplicar correcciones finales
+        final_response = '\n\n'.join(paragraphs)
+        
+        for wrong, right in self.common_corrections.items():
+            if wrong in final_response.lower():
+                pattern = re.compile(re.escape(wrong), re.IGNORECASE)
+                final_response = pattern.sub(right, final_response)
+        
+        return final_response.strip()
     
-    def generate_response(self, question: str, context_docs: List[Dict], max_chars: int = 1200) -> str:
-        """Genera respuesta MEJORADA con precisión histórica"""
+    def validate_response(self, response: str, question: str) -> Dict:
+        """Valida la calidad de la respuesta"""
+        
+        issues = []
+        
+        # 1. Verificar longitud mínima
+        if len(response) < 200:
+            issues.append("Respuesta demasiado corta")
+        
+        # 2. Verificar patrones prohibidos
+        prohibited_patterns = [
+            (r'\[\d+\]', "Contiene referencias entre corchetes"),
+            (r'Fuente:\s*\d', "Menciona 'Fuente:' con números"),
+            (r'\d+\.\s*$', "Termina con números"),
+        ]
+        
+        for pattern, message in prohibited_patterns:
+            if re.search(pattern, response):
+                issues.append(message)
+        
+        # 3. Verificar estructura de párrafos
+        paragraphs = response.split('\n\n')
+        if len(paragraphs) < 2:
+            issues.append("Falta estructura en párrafos")
+        
+        # 4. Verificar términos históricos relevantes
+        question_lower = question.lower()
+        if 'esclavo' in question_lower:
+            expected_terms = ['esclavitud', 'libertad', 'fugitivo', 'españa', 'florida']
+            found_terms = sum(1 for term in expected_terms if term in response.lower())
+            if found_terms < 2:
+                issues.append(f"Falta terminología histórica específica (encontrados: {found_terms})")
+        
+        return {
+            'valid': len(issues) == 0,
+            'issues': issues,
+            'paragraph_count': len(paragraphs),
+            'length': len(response)
+        }
+    
+    def generate_response(self, question: str, context_docs: List[Dict]) -> str:
+        """Genera respuesta validada y limpia"""
+        
+        print(f"\n{'='*60}")
+        print(f"🤔 PREGUNTA: {question}")
+        print(f"{'='*60}")
         
         start_time = datetime.now()
         
-        print(f"🤔 Pregunta: {question}")
+        # 1. Construir contexto limpio
+        context = self.build_clean_context(question, context_docs)
+        print(f"\n📚 Contexto construido ({len(context.split())} palabras)")
         
-        # 1. Construir contexto inteligente
-        context = self.build_intelligent_context(question, context_docs)
-        
-        # 2. Construir prompt optimizado
-        prompt = self.build_optimized_prompt(question, context)
+        # 2. Construir prompt
+        prompt = self.build_prompt(question, context)
         
         # 3. Tokenización
         inputs = self.tokenizer(
             prompt,
             return_tensors="pt",
             truncation=True,
-            max_length=2800
+            max_length=3000,
+            padding=True
         ).to(self.model.device)
         
-        # 4. Generación con parámetros optimizados para calidad
+        # 4. Generación con parámetros ajustados
+        print("⚡ Generando respuesta...")
+        
         with torch.no_grad():
             outputs = self.model.generate(
                 **inputs,
-                max_new_tokens=800,
+                max_new_tokens=700,
                 temperature=0.7,
                 do_sample=True,
-                top_p=0.92,
-                top_k=50,
-                repetition_penalty=1.18,
+                top_p=0.9,
+                top_k=40,
+                repetition_penalty=1.2,
                 no_repeat_ngram_size=3,
                 pad_token_id=self.tokenizer.pad_token_id,
-                eos_token_id=self.tokenizer.eos_token_id
+                eos_token_id=self.tokenizer.eos_token_id,
+                early_stopping=True
             )
         
-        # 5. Decodificar y post-procesar
+        # 5. Decodificar
         raw_response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-        response = self.post_process_response(raw_response, question)
         
-        # 6. Estadísticas
+        # 6. Limpiar respuesta
+        response = self.clean_generated_response(raw_response)
+        
+        # 7. Validar
+        validation = self.validate_response(response, question)
+        
+        # 8. Estadísticas
         elapsed = (datetime.now() - start_time).total_seconds()
-        print(f"✅ Respuesta en {elapsed:.1f}s, {len(response)} caracteres")
-        print(f"📊 Tokens de entrada: {inputs['input_ids'].shape[1]}")
         
-        # 7. Limpiar memoria
+        print(f"\n✅ RESPUESTA GENERADA ({elapsed:.1f}s):")
+        print(f"📊 Longitud: {len(response)} caracteres, {len(response.split())} palabras")
+        print(f"📈 Párrafos: {validation['paragraph_count']}")
+        
+        if not validation['valid']:
+            print(f"⚠️  Advertencias: {', '.join(validation['issues'])}")
+        
+        print(f"\n{'='*60}")
+        print("💬 RESPUESTA FINAL:")
+        print(f"{'='*60}")
+        print(response)
+        print(f"{'='*60}")
+        
+        # 9. Limpiar memoria
         self.cleanup_memory()
         
         return response
@@ -339,43 +441,41 @@ RESPUESTA DEL HISTORIADOR:"""
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
     
-    def get_response_quality_score(self, response: str, question: str) -> Dict[str, float]:
-        """Evalúa la calidad de una respuesta"""
+    def generate_multiple_options(self, question: str, context_docs: List[Dict], n: int = 2) -> List[Dict]:
+        """Genera múltiples opciones de respuesta"""
+        options = []
         
-        score = 0
-        max_score = 10
-        feedback = []
+        for i in range(n):
+            print(f"\n🔄 Generando opción {i+1}/{n}...")
+            
+            # Variar ligeramente los parámetros para diversidad
+            with torch.no_grad():
+                inputs = self.tokenizer(
+                    self.build_prompt(question, self.build_clean_context(question, context_docs)),
+                    return_tensors="pt",
+                    truncation=True,
+                    max_length=3000
+                ).to(self.model.device)
+                
+                outputs = self.model.generate(
+                    **inputs,
+                    max_new_tokens=600,
+                    temperature=0.8 if i > 0 else 0.7,  # Más diversidad en opciones posteriores
+                    do_sample=True,
+                    top_p=0.92,
+                    top_k=50,
+                    repetition_penalty=1.15,
+                    num_return_sequences=1
+                )
+            
+            raw_response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            cleaned_response = self.clean_generated_response(raw_response)
+            
+            options.append({
+                'option': i + 1,
+                'response': cleaned_response,
+                'length': len(cleaned_response),
+                'validation': self.validate_response(cleaned_response, question)
+            })
         
-        # 1. Longitud adecuada
-        if 300 <= len(response) <= 1200:
-            score += 2
-        else:
-            feedback.append("Longitud inadecuada")
-        
-        # 2. Estructura de párrafos
-        paragraphs = response.split('\n\n')
-        if len(paragraphs) >= 2:
-            score += 2
-        else:
-            feedback.append("Falta estructura en párrafos")
-        
-        # 3. Precisión terminológica
-        precision_indicators = ['siglo', 'año', 'decreto', 'ley', 'política', 'histórico']
-        precision_count = sum(1 for indicator in precision_indicators if indicator in response.lower())
-        if precision_count >= 2:
-            score += 3
-        else:
-            feedback.append("Falta precisión histórica")
-        
-        # 4. Sin errores comunes
-        error_count = sum(1 for wrong in self.common_corrections if wrong in response.lower())
-        if error_count == 0:
-            score += 3
-        else:
-            feedback.append(f"Contiene {error_count} errores comunes")
-        
-        return {
-            'score': score / max_score,
-            'percentage': (score / max_score) * 100,
-            'feedback': feedback if feedback else ["Buena calidad"]
-        }
+        return options
