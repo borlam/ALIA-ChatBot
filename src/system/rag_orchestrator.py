@@ -7,6 +7,7 @@ from ..vector.vector_store import PersistentVectorStore
 from ..llm.chat_engine import ChatEngine
 from ..core.document_analyzer import DocumentAnalyzer
 from .config import *
+import torch
 
 class RAGOrchestrator:
     """Coordina todos los componentes del sistema"""
