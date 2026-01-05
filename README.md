@@ -3,15 +3,17 @@
 ALIA-ChatBot es un chatbot inteligente desarrollado en Python, diseñado para conversaciones naturales y procesamiento de lenguaje. Utiliza modelos de aprendizaje automático y está estructurado para ser fácil de configurar y ejecutar, ideal para desarrolladores que quieran explorar o integrar funcionalidades de chatbot.
 
 📁 Estructura del Proyecto
-text
+
 ALIA-ChatBot/
 ├── notebooks/          # Jupyter Notebooks para experimentación y análisis
 ├── src/               # Código fuente principal del chatbot
 ├── .gitignore         # Archivos y carpetas ignorados por Git
-├── LICENSE            # Licencia del proyecto (revisar para detalles)
+├── LICENSE            # Licencia del proyecto
 ├── README.md          # Este archivo
-├── requirements.txt   # Dependencias de Python necesarias
+├── requirements.txt   # Dependencias de Python
 └── run.py             # Script principal para ejecutar el chatbot
+
+
 🚀 Comenzando
 Sigue estos pasos para configurar y ejecutar ALIA-ChatBot en tu máquina local.
 
