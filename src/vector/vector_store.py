@@ -143,3 +143,23 @@ class PersistentVectorStore:
         except Exception as e:
             print(f"❌ Error en búsqueda mejorada: {e}")
             return []
+
+    def get_stats(self) -> Dict:
+        """Obtiene estadísticas del almacén vectorial"""
+        try:
+            count = self.collection.count()
+
+            all_metas = self.collection.get(include=["metadatas"])
+            pdf_ids = set()
+            if all_metas['metadatas']:
+                for meta in all_metas['metadatas']:
+                    if meta and 'pdf_id' in meta:
+                        pdf_ids.add(meta['pdf_id'])
+
+            return {
+                'total_chunks': count,
+                'unique_pdfs': len(pdf_ids),
+                'path': self.persist_path
+            }
+        except:
+            return {'total_chunks': 0, 'unique_pdfs': 0}
