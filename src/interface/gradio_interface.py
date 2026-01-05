@@ -74,6 +74,31 @@ class GradioInterface:
                 
                 # ===== PANEL LATERAL DERECHO =====
                 with gr.Column(scale=1):
+                    # ===== NUEVO: SELECTOR DE MODELO =====
+                    gr.Markdown("### 🤖 **Selección de Modelo**")
+                    
+                    with gr.Group():
+                        # Selector de modelo
+                        model_selector = gr.Dropdown(
+                            choices=list(self.orchestrator.get_available_models().keys()),
+                            value=ACTIVE_MODEL_KEY,
+                            label="Modelo de Lenguaje",
+                            info="Selecciona el modelo para generar respuestas"
+                        )
+                        
+                        # Botón para cambiar modelo
+                        change_model_btn = gr.Button(
+                            "🔄 Cambiar Modelo",
+                            variant="primary",
+                            size="sm"
+                        )
+                        
+                        # Información del modelo actual
+                        model_info_display = gr.JSON(
+                            label="Información del Modelo",
+                            value=self.orchestrator.get_current_model_info()
+                        )
+                    
                     # Gestión de documentos
                     gr.Markdown("### 📄 **Gestión de Documentos**")
                     
@@ -141,9 +166,10 @@ class GradioInterface:
             
             with gr.Row():
                 with gr.Column(scale=1):
+                    current_model = self.orchestrator.get_current_model_info()
                     gr.Markdown(f"""
                     ### 🏗️ **Arquitectura Optimizada**
-                    - **Modelo:** {MODEL_NAME}
+                    - **Modelo:** {current_model['display_name']}
                     - **Embeddings:** {EMBEDDING_MODEL}
                     - **Base de datos:** ChromaDB persistente
                     - **GPU:** {'✅ Disponible' if torch.cuda.is_available() else '❌ Solo CPU'}
@@ -182,7 +208,20 @@ class GradioInterface:
                 outputs=[pdf_status, stats_display]
             )
             
-            # 3. BOTONES DE CONTROL
+            # 3. NUEVO: CAMBIO DE MODELO
+            change_model_btn.click(
+                fn=lambda model_key: self.orchestrator.change_model(model_key),
+                inputs=[model_selector],
+                outputs=[pdf_status]  # Reutilizamos pdf_status para mostrar mensaje
+            ).then(
+                fn=lambda: self.orchestrator.get_current_model_info(),
+                outputs=[model_info_display]
+            ).then(
+                fn=self.get_system_stats_markdown,
+                outputs=[stats_display]
+            )
+            
+            # 4. BOTONES DE CONTROL
             clear_btn.click(
                 fn=lambda: [],
                 outputs=[chatbot]
@@ -210,7 +249,14 @@ class GradioInterface:
                 outputs=[pdf_status]
             )
             
-            # 4. CARGA INICIAL
+            # 5. Actualizar info del modelo cuando se selecciona
+            model_selector.change(
+                fn=lambda key: self.orchestrator.get_available_models()[key],
+                inputs=[model_selector],
+                outputs=[model_info_display]
+            )
+            
+            # 6. CARGA INICIAL
             demo.load(
                 fn=self.get_system_stats_markdown,
                 outputs=[stats_display]
@@ -219,14 +265,24 @@ class GradioInterface:
         return demo
 
     # ===== FUNCIONES DE LA INTERFAZ =====
+    # (Todas las funciones existentes se mantienen igual)
+    # Solo necesitas cambiar la función format_stats_detailed para mostrar info del modelo:
     
     def format_stats_detailed(self, stats):
         """Formatea las estadísticas para mostrar en Markdown"""
         if not stats:
             return "📊 Estadísticas no disponibles"
         
-        # Información básica
+        # Obtener información del modelo
+        model_info = self.orchestrator.get_current_model_info()
+        
         md = f"""## 📊 **ESTADO DEL SISTEMA**
+
+### 🤖 MODELO ACTIVO
+• **Nombre:** {model_info['display_name']}
+• **Descripción:** {model_info['description']}
+• **Memoria requerida:** {model_info['memory_required']}
+• **Compatible con GPU:** {'✅ Sí' if model_info.get('gpu_sufficient', True) else '⚠️ Limitada'}
 
 ### 📚 DOCUMENTOS
 • **PDFs procesados:** {stats.get('total_pdfs', 0)}
@@ -237,18 +293,24 @@ class GradioInterface:
 ### ⚙️ HARDWARE
 • **GPU:** {'✅ ' + torch.cuda.get_device_name(0) if torch.cuda.is_available() else '❌ CPU'}
 • **Arquitectura:** {stats.get('architecture', 'optimized_v2')}
-• **Modelo:** {stats.get('model', MODEL_NAME)}
-
-### 🔄 SISTEMA
-• **Última actualización:** {stats.get('last_update', 'N/A')}
-• **Embeddings:** {EMBEDDING_MODEL.split('/')[-1]}
 """
         
         if torch.cuda.is_available():
             md += f"""• **Memoria GPU:** {torch.cuda.memory_allocated()/1e9:.1f}GB / {torch.cuda.get_device_properties(0).total_memory/1e9:.1f}GB
 """
         
+        md += f"""
+### 🔄 SISTEMA
+• **Última actualización:** {stats.get('last_update', 'N/A')}
+• **Embeddings:** {EMBEDDING_MODEL.split('/')[-1]}
+"""
+        
         return md
+
+    # Mantén todas las demás funciones EXACTAMENTE como están:
+    # get_system_stats_markdown, chat_function, process_pdfs_function, 
+    # test_system_function, search_by_theme_function
+    # ... (copia tus funciones exactamente como las tienes) ...
 
     def get_system_stats_markdown(self):
         """Obtiene y formatea las estadísticas del sistema para Markdown"""

@@ -2,6 +2,8 @@
 """Orquestador principal del sistema RAG"""
 
 from typing import Dict, List, Any
+import torch
+from datetime import datetime
 from ..processing.pdf_manager import PDFManager
 from ..vector.vector_store import PersistentVectorStore
 from ..llm.chat_engine import ChatEngine
@@ -11,24 +13,30 @@ from .config import *
 class RAGOrchestrator:
     """Coordina todos los componentes del sistema"""
     
-    def __init__(self):
+    def __init__(self, initial_model_key: str = None):
         print("\n" + "="*60)
         print("🏛️  INICIALIZANDO SISTEMA RAG (ARQUITECTURA OPTIMIZADA)")
         print("="*60)
+        
+        # Establecer modelo inicial si se especifica
+        if initial_model_key:
+            set_active_model(initial_model_key)
         
         # Componentes
         self.pdf_manager = PDFManager(PDF_STORAGE_PATH)
         self.vector_store = PersistentVectorStore(VECTOR_DB_PATH)
         self.document_analyzer = DocumentAnalyzer()
-        self.chat_engine = ChatEngine()
+        self.chat_engine = ChatEngine(ACTIVE_MODEL_KEY)  # Pasar modelo activo
         
         # Estado del sistema
         self.system_stats = self._update_stats()
         
         print("\n✅ SISTEMA OPTIMIZADO LISTO")
+        print(f"🤖 Modelo activo: {get_active_model_info()['display_name']}")
         print(f"📊 Documentos: {self.system_stats.get('total_pdfs', 0)}")
         print(f"📊 Chunks: {self.system_stats.get('total_chunks', 0):,}")
         print(f"⚡ Arquitectura: Análisis en indexación")
+        print(f"💾 GPU: {'✅ ' + torch.cuda.get_device_name(0) if torch.cuda.is_available() else '❌ Solo CPU'}")
     
     def _update_stats(self) -> Dict:
         """Actualiza estadísticas del sistema"""
@@ -39,10 +47,77 @@ class RAGOrchestrator:
             **pdf_stats,
             **vector_stats,
             'gpu_available': torch.cuda.is_available(),
-            'model': MODEL_NAME,
+            'model': get_active_model_info(),
             'architecture': 'optimized_v2',
             'last_update': datetime.now().isoformat()
         }
+    
+    def change_model(self, model_key: str) -> Dict[str, Any]:
+        """Cambia el modelo de lenguaje activo"""
+        print(f"\n🔄 SOLICITUD DE CAMBIO DE MODELO: {model_key}")
+        
+        try:
+            # Verificar si el modelo es válido
+            if model_key not in get_available_models_list():
+                return {
+                    'success': False,
+                    'error': f"Modelo '{model_key}' no disponible. Opciones: {list(get_available_models_list().keys())}"
+                }
+            
+            # Verificar GPU para modelos grandes
+            if "40b" in model_key.lower() and not is_gpu_sufficient_for_model(model_key):
+                return {
+                    'success': False,
+                    'error': f"⚠️ ALIA-40B requiere ~20GB de GPU. Tu GPU tiene {torch.cuda.get_device_properties(0).total_memory/1e9:.1f}GB"
+                }
+            
+            # Cambiar configuración
+            if not set_active_model(model_key):
+                return {
+                    'success': False,
+                    'error': "Error al cambiar configuración del modelo"
+                }
+            
+            # Crear nuevo ChatEngine
+            print("🔧 Recargando motor de chat...")
+            self.chat_engine = ChatEngine(model_key)
+            
+            # Actualizar estadísticas
+            self.system_stats = self._update_stats()
+            
+            return {
+                'success': True,
+                'model': get_active_model_info(),
+                'message': f"✅ Modelo cambiado a {get_active_model_info()['display_name']}"
+            }
+            
+        except Exception as e:
+            print(f"❌ Error cambiando modelo: {e}")
+            return {
+                'success': False,
+                'error': f"Error al cambiar modelo: {str(e)}"
+            }
+    
+    def get_available_models(self) -> Dict[str, Dict[str, Any]]:
+        """Obtiene lista de modelos disponibles"""
+        models = get_available_models_list()
+        
+        # Añadir información de compatibilidad con GPU
+        enhanced_models = {}
+        for key, info in models.items():
+            enhanced_models[key] = {
+                **info,
+                'gpu_sufficient': is_gpu_sufficient_for_model(key),
+                'is_current': key == ACTIVE_MODEL_KEY
+            }
+        
+        return enhanced_models
+    
+    def get_current_model_info(self) -> Dict[str, Any]:
+        """Obtiene información del modelo actual"""
+        info = get_active_model_info()
+        info['gpu_sufficient'] = is_gpu_sufficient_for_model()
+        return info
     
     def process_document(self, pdf_file, filename: str = None) -> Dict:
         """
@@ -89,6 +164,7 @@ class RAGOrchestrator:
         Consulta inteligente con análisis pre-existente
         """
         print(f"\n🔍 CONSULTA: '{question[:80]}...'")
+        print(f"🤖 Modelo: {get_active_model_info()['display_name']}")
         
         # 1. Búsqueda MEJORADA con metadatos enriquecidos
         search_results = self.vector_store.search_with_analysis(
@@ -125,7 +201,7 @@ class RAGOrchestrator:
             'sources': sources,
             'docs_used': len(relevant_docs),
             'response_length': len(response),
-            'model': MODEL_NAME
+            'model': get_active_model_info()['display_name']
         }
     
     def get_system_info(self) -> Dict:

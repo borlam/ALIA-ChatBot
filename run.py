@@ -174,11 +174,71 @@ def print_system_info():
     except ImportError:
         print("   ⚠️  Gradio no instalado")
 
+def show_available_models():
+    """Muestra los modelos disponibles y sus características"""
+    print("\n🤖 MODELOS DISPONIBLES:")
+    print("-" * 50)
+    
+    try:
+        from src.system.config import get_available_models_list, is_gpu_sufficient_for_model
+        import torch
+        
+        models = get_available_models_list()
+        
+        for key, info in models.items():
+            gpu_sufficient = is_gpu_sufficient_for_model(key)
+            gpu_icon = "✅" if gpu_sufficient else "⚠️"
+            
+            print(f"   🔘 {key}:")
+            print(f"      📝 Nombre: {info['display_name']}")
+            print(f"      📋 Descripción: {info['description']}")
+            print(f"      💾 Memoria: {info['memory_required']}")
+            print(f"      🎯 Tokens máx: {info['max_tokens']}")
+            print(f"      🖥️  GPU: {gpu_icon} {'Suficiente' if gpu_sufficient else 'Puede ser insuficiente'}")
+            print()
+        
+        # Mostrar recomendación
+        if torch.cuda.is_available():
+            gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1e9
+            print(f"💡 RECOMENDACIÓN (GPU: {gpu_memory:.1f}GB):")
+            
+            if gpu_memory >= 20:
+                print("   → Puedes usar ALIA-40B para máxima calidad")
+            elif gpu_memory >= 6:
+                print("   → Salamandra-7B es la opción óptima")
+            else:
+                print("   → Salamandra-2B es la mejor opción")
+        else:
+            print("💡 RECOMENDACIÓN (Solo CPU):")
+            print("   → Salamandra-2B es la única opción práctica")
+            
+    except ImportError as e:
+        print(f"⚠️  No se pueden mostrar modelos: {e}")
+
 def main():
     """Función principal"""
     print("\n" + "="*80)
-    print("🏛️  SISTEMA RAG HISPANIDAD - ARQUITECTURA OPTIMIZADA v2.0")
+    print("🏛️  SISTEMA RAG HISPANIDAD - ARQUITECTURA OPTIMIZADA v3.0")
+    print("🤖 CON SELECCIÓN DE MODELOS: Salamandra-2B/7B o ALIA-40B")
     print("="*80)
+    
+    # Verificar si se pasa un modelo como argumento
+    initial_model = None
+    if len(sys.argv) > 1:
+        model_arg = sys.argv[1].lower()
+        valid_models = ["salamandra2b", "salamandra7b", "alia40b"]
+        
+        if model_arg in valid_models:
+            initial_model = model_arg
+            print(f"\n🎯 Modelo inicial solicitado: {model_arg}")
+            print(f"   La aplicación iniciará con este modelo")
+        else:
+            print(f"\n⚠️  Modelo '{model_arg}' no válido.")
+            print(f"   Opciones válidas: {', '.join(valid_models)}")
+            print("   Iniciando con modelo por defecto (salamandra7b)")
+    
+    # Mostrar modelos disponibles
+    show_available_models()
     
     # 1. Configurar entorno
     print("\n1️⃣ CONFIGURANDO ENTORNO")
@@ -210,7 +270,6 @@ def main():
         
         print("✅ Módulos cargados exitosamente")
         print(f"   🏗️  Arquitectura: Optimizada (análisis en indexación)")
-        print(f"   🤖 Modelo: Salamandra-7B en 4-bit")
         print(f"   📁 Datos: {data_path}")
         
     except ImportError as e:
@@ -229,8 +288,8 @@ def main():
     print("="*60)
     
     try:
-        # Inicializar el NUEVO orquestador
-        orchestrator = RAGOrchestrator()
+        # Inicializar el NUEVO orquestador con modelo inicial si se especificó
+        orchestrator = RAGOrchestrator(initial_model_key=initial_model)
         
         # Obtener estadísticas iniciales
         stats = orchestrator.get_system_info()
@@ -240,7 +299,15 @@ def main():
         print(f"   • PDFs procesados: {stats.get('total_pdfs', 0)}")
         print(f"   • Chunks indexados: {stats.get('total_chunks', 0):,}")
         print(f"   • GPU activa: {'✅ Sí' if stats.get('gpu_available', False) else '❌ No'}")
-        print(f"   • Modelo: {stats.get('model', 'Desconocido')}")
+        
+        # Mostrar información del modelo
+        model_info = stats.get('model', {})
+        if isinstance(model_info, dict):
+            print(f"   • Modelo activo: {model_info.get('display_name', 'Desconocido')}")
+            print(f"   • Descripción: {model_info.get('description', 'N/A')}")
+        else:
+            print(f"   • Modelo: {stats.get('model', 'Desconocido')}")
+        
         print(f"   • Arquitectura: {stats.get('architecture', 'optimized_v2')}")
         
         # 8. Crear interfaz Gradio adaptada
@@ -254,16 +321,18 @@ def main():
         print("="*60)
         
         print("\n🎯 **INSTRUCCIONES DE USO:**")
-        print("1. 📤 Sube PDFs históricos usando el panel izquierdo")
-        print("2. 🔧 Haz clic en 'Procesar PDFs' para indexarlos (con análisis completo)")
-        print("3. 💬 Pregunta sobre cualquier tema histórico")
-        print("4. 📚 Las respuestas usarán análisis previo + conocimiento general")
-        print("5. 💾 Todo se guarda automáticamente en Google Drive")
+        print("1. 🤖 Selecciona el modelo en el panel derecho (2B, 7B o ALIA-40B)")
+        print("2. 📤 Sube PDFs históricos usando el panel izquierdo")
+        print("3. 🔧 Haz clic en 'Procesar PDFs' para indexarlos (con análisis completo)")
+        print("4. 💬 Pregunta sobre cualquier tema histórico")
+        print("5. 📚 Las respuestas usarán análisis previo + conocimiento general")
+        print("6. 💾 Todo se guarda automáticamente en Google Drive")
         
         print("\n⚡ **VENTAJAS DE LA NUEVA ARQUITECTURA:**")
         print("   • ⚡ 10x más rápido: Análisis se hace una sola vez")
-        print("   • 🧠 Memoria optimizada: Sin análisis pesado en cada pregunta")
-        print("   • 🎯 Respuestas más precisas: Usa metadatos enriquecidos")
+        print("   • 🧠 Menos memoria: Sin análisis pesado en cada pregunta")
+        print("   • 🎯 Más preciso: Metadatos enriquecidos")
+        print("   • 🤖 Modelos múltiples: Elige entre 2B, 7B o ALIA-40B")
         print("   • 📈 Escalable: Soporta cientos de PDFs")
         
         # Configuración de lanzamiento
@@ -279,9 +348,17 @@ def main():
             print("\n⏳ Generando URL pública...")
             print("   La URL estará disponible en unos segundos")
             print("   ⚠️  En Colab free, la sesión expira después de un tiempo")
+            print("   💡 Usa Ctrl+C para detener y liberar recursos")
         else:
             print(f"\n🌐 Servidor local: http://localhost:7860")
             print("   Presiona Ctrl+C para detener el servidor")
+        
+        # Instrucciones para cambio de modelo
+        print("\n🔄 **CAMBIO DE MODELO DURANTE LA EJECUCIÓN:**")
+        print("   • Selecciona un modelo diferente en el panel derecho")
+        print("   • Haz clic en '🔄 Cambiar Modelo'")
+        print("   • El sistema recargará automáticamente el nuevo modelo")
+        print("   • ⚠️ El cambio puede tardar 1-2 minutos dependiendo del modelo")
         
         print("\n" + "="*60)
         print("✅ SISTEMA LISTO - ESPERANDO CONEXIONES...")
@@ -305,6 +382,10 @@ def main():
         if "No module named" in str(e):
             print(f"\n💡 ERROR DE IMPORT: {e}")
             print("   Ejecuta: pip install -r requirements.txt")
+        elif "CUDA out of memory" in str(e):
+            print(f"\n💡 ERROR DE MEMORIA GPU: {e}")
+            print("   Usa un modelo más pequeño: python run.py salamandra2b")
+            print("   O libera memoria GPU: import torch; torch.cuda.empty_cache()")
 
 if __name__ == "__main__":
     main()

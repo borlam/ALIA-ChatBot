@@ -9,33 +9,73 @@ from datetime import datetime
 from ..system.config import *
 
 class ChatEngine:
-    def __init__(self):
-        print("🧠 Cargando modelo salamandra-7b (modo optimizado)...")
+    def __init__(self, model_key: str = None):
+        """Inicializa el motor de chat con un modelo específico"""
         
-        quantization_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_compute_dtype=torch.float16,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_use_double_quant=True,
-        )
+        # Usar modelo por defecto si no se especifica
+        if model_key and model_key in get_available_models_list():
+            set_active_model(model_key)
         
-        self.tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+        print(f"🧠 Cargando modelo {MODEL_NAME} (modo optimizado)...")
+        print(f"📊 Configuración: {MAX_TOKENS} tokens máx, {TEMPERATURE} temperatura")
         
-        self.model = AutoModelForCausalLM.from_pretrained(
-            MODEL_NAME,
-            quantization_config=quantization_config,
-            device_map="auto",
-            torch_dtype=torch.float16,
-            trust_remote_code=False,
-            low_cpu_mem_usage=True
-        )
+        # Configurar cuantización según modelo
+        model_info = get_active_model_info()
         
+        if "40b" in model_info["name"].lower():
+            # Para ALIA-40B, usar cuantización más agresiva
+            quantization_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_compute_dtype=torch.float16,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_use_double_quant=True,
+                llm_int8_enable_fp32_cpu_offload=True  # Descargar a CPU si es necesario
+            )
+        else:
+            # Para Salamandra 2B/7B
+            quantization_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_compute_dtype=torch.float16,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_use_double_quant=True,
+            )
+        
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, trust_remote_code=True)
+            
+            self.model = AutoModelForCausalLM.from_pretrained(
+                MODEL_NAME,
+                quantization_config=quantization_config,
+                device_map="auto",
+                torch_dtype=torch.float16,
+                trust_remote_code=True,
+                low_cpu_mem_usage=True
+            )
+            
+        except Exception as e:
+            print(f"⚠️ Error cargando modelo {MODEL_NAME}: {e}")
+            print("🔄 Intentando cargar sin cuantización...")
+            
+            # Fallback: cargar sin cuantización
+            self.tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, trust_remote_code=True)
+            self.model = AutoModelForCausalLM.from_pretrained(
+                MODEL_NAME,
+                device_map="auto",
+                torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+                trust_remote_code=True
+            )
+        
+        # Configurar tokenizer
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         
-        print(f"✅ Modelo 7B cargado en modo optimizado")
+        print(f"✅ Modelo {model_info['display_name']} cargado en modo optimizado")
+        
+        # Almacenar info del modelo
+        self.model_info = model_info
 
     def compute_confidence(self, documents: List[Dict]) -> str:
+        # ... (mantén esta función igual que antes) ...
         if not documents:
             return "low"
 
@@ -50,12 +90,13 @@ class ChatEngine:
             return "low"
 
     def build_intelligent_context(self, question: str, documents: List[Dict]) -> str:
+        # ... (mantén esta función igual que antes) ...
         if not documents:
             return ""
 
         parts = []
 
-        for doc in documents[:6]:  # ⬅️ subir a 6
+        for doc in documents[:6]:
             text = doc["text"]
 
             if len(text) > 400:
@@ -66,6 +107,7 @@ class ChatEngine:
         return "\n\n".join(parts)
 
     def build_prompt_with_confidence(self, question: str, context: str, confidence: str) -> str:
+        # ... (mantén esta función igual que antes) ...
         tone = {
             "high": "Responde con seguridad y detalle.",
             "medium": "Responde de forma natural, indicando matices si es necesario.",
@@ -96,28 +138,6 @@ Pregunta:
 Respuesta:
 """
 
-
-    def build_optimized_prompt(self, question: str, context: str) -> str:
-        return f"""
-Eres regerIA, un asistente conversacional experto en historia hispanoamericana.
-Hablas de forma clara, natural y cercana.
-
-Contexto disponible (puede ser parcial o incompleto):
-{context}
-
-Instrucciones:
-- Usa el contexto si es relevante.
-- Si el contexto no es suficiente, razona con tu conocimiento general.
-- Si no estás completamente seguro, dilo de forma natural.
-- No inventes citas específicas si no aparecen en el contexto.
-- Responde siempre en español.
-
-Pregunta:
-{question}
-
-Respuesta:
-"""
-   
     def generate_response(self, question: str, context_docs: List[Dict], max_chars: int = 2000) -> str:
         """Genera respuesta RÁPIDA usando análisis pre-existente"""
         
@@ -134,22 +154,30 @@ Respuesta:
         else:
             temperature = 0.85
 
+        # Ajustar tokens según modelo
+        if "40b" in self.model_info["name"].lower():
+            max_length = 3500  # ALIA necesita más contexto
+            max_new_tokens = 800
+        else:
+            max_length = 2500
+            max_new_tokens = MAX_TOKENS
+
         # 3. Tokenización eficiente
         inputs = self.tokenizer(
             prompt,
             return_tensors="pt",
             truncation=True,
-            max_length=2500  # Menor límite para más velocidad
+            max_length=max_length
         ).to(self.model.device)
         
         # 4. Generación con parámetros optimizados
         with torch.no_grad():
             outputs = self.model.generate(
                 **inputs,
-                max_new_tokens=600,  # Suficiente para respuestas claras
+                max_new_tokens=max_new_tokens,
                 temperature=temperature,
                 do_sample=True,
-                top_p=0.9,
+                top_p=TOP_P,
                 repetition_penalty=1.15,
                 pad_token_id=self.tokenizer.pad_token_id,
                 eos_token_id=self.tokenizer.eos_token_id
@@ -172,7 +200,7 @@ Respuesta:
         
         # Estadísticas
         elapsed = (datetime.now() - start_time).total_seconds()
-        print(f"✅ Respuesta en {elapsed:.1f}s, {len(response)} caracteres")
+        print(f"✅ Respuesta en {elapsed:.1f}s, {len(response)} caracteres (Modelo: {self.model_info['display_name']})")
         
         # Limpiar memoria
         self.cleanup_memory()
@@ -183,3 +211,7 @@ Respuesta:
         """Limpia memoria GPU"""
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+    
+    def get_model_info(self):
+        """Obtiene información del modelo actual"""
+        return self.model_info
