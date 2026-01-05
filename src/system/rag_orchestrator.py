@@ -32,7 +32,7 @@ class RAGOrchestrator:
     
     def _update_stats(self) -> Dict:
         """Actualiza estadísticas del sistema"""
-        pdf_stats = self.pdf_manager.get_pdf_stats()
+        pdf_stats = self.pdf_manager.get_stats()
         vector_stats = self.vector_store.get_stats()
         
         return {
