@@ -78,10 +78,22 @@ class GradioInterface:
                     gr.Markdown("### 🤖 **Selección de Modelo**")
                     
                     with gr.Group():
+                        # Obtener modelos disponibles y modelo actual
+                        try:
+                            available_models = self.orchestrator.get_available_models()
+                            current_model_info = self.orchestrator.get_current_model_info()
+                            model_keys = list(available_models.keys())
+                            current_key = current_model_info.get('key', model_keys[0] if model_keys else 'salamandra7b')
+                        except:
+                            # Fallback si hay error
+                            available_models = {'salamandra7b': {'display_name': 'Salamandra 7B'}}
+                            model_keys = ['salamandra7b']
+                            current_key = 'salamandra7b'
+                        
                         # Selector de modelo
                         model_selector = gr.Dropdown(
-                            choices=list(self.orchestrator.get_available_models().keys()),
-                            value=ACTIVE_MODEL_KEY,
+                            choices=model_keys,
+                            value=current_key,
                             label="Modelo de Lenguaje",
                             info="Selecciona el modelo para generar respuestas"
                         )
@@ -96,7 +108,7 @@ class GradioInterface:
                         # Información del modelo actual
                         model_info_display = gr.JSON(
                             label="Información del Modelo",
-                            value=self.orchestrator.get_current_model_info()
+                            value=current_model_info
                         )
                     
                     # Gestión de documentos
@@ -167,9 +179,11 @@ class GradioInterface:
             with gr.Row():
                 with gr.Column(scale=1):
                     current_model = self.orchestrator.get_current_model_info()
+                    model_name = current_model.get('display_name', 'Salamandra 7B')
+                    
                     gr.Markdown(f"""
                     ### 🏗️ **Arquitectura Optimizada**
-                    - **Modelo:** {current_model['display_name']}
+                    - **Modelo:** {model_name}
                     - **Embeddings:** {EMBEDDING_MODEL}
                     - **Base de datos:** ChromaDB persistente
                     - **GPU:** {'✅ Disponible' if torch.cuda.is_available() else '❌ Solo CPU'}
@@ -210,15 +224,9 @@ class GradioInterface:
             
             # 3. NUEVO: CAMBIO DE MODELO
             change_model_btn.click(
-                fn=lambda model_key: self.orchestrator.change_model(model_key),
+                fn=self.change_model_function,
                 inputs=[model_selector],
-                outputs=[pdf_status]  # Reutilizamos pdf_status para mostrar mensaje
-            ).then(
-                fn=lambda: self.orchestrator.get_current_model_info(),
-                outputs=[model_info_display]
-            ).then(
-                fn=self.get_system_stats_markdown,
-                outputs=[stats_display]
+                outputs=[pdf_status, model_info_display, stats_display]
             )
             
             # 4. BOTONES DE CONTROL
@@ -264,9 +272,36 @@ class GradioInterface:
 
         return demo
 
-    # ===== FUNCIONES DE LA INTERFAZ =====
-    # (Todas las funciones existentes se mantienen igual)
-    # Solo necesitas cambiar la función format_stats_detailed para mostrar info del modelo:
+    # ===== NUEVAS FUNCIONES PARA MANEJO DE MODELOS =====
+    
+    def change_model_function(self, model_key: str):
+        """Función para cambiar el modelo de lenguaje"""
+        print(f"\n🔄 SOLICITUD DE CAMBIO DE MODELO: {model_key}")
+        
+        try:
+            # Cambiar modelo usando el orquestador
+            result = self.orchestrator.change_model(model_key)
+            
+            if result.get('success', False):
+                # Obtener nueva información del modelo
+                model_info = self.orchestrator.get_current_model_info()
+                
+                message = f"✅ Modelo cambiado exitosamente a {model_info.get('display_name', model_key)}\n"
+                message += f"📊 Ahora usarás: {model_info.get('description', '')}"
+                
+                return message, model_info, self.get_system_stats_markdown()
+            else:
+                error_msg = f"❌ Error cambiando modelo: {result.get('error', 'Error desconocido')}"
+                current_info = self.orchestrator.get_current_model_info()
+                return error_msg, current_info, self.get_system_stats_markdown()
+                
+        except Exception as e:
+            print(f"❌ Error en change_model_function: {e}")
+            current_info = self.orchestrator.get_current_model_info()
+            error_msg = f"❌ Error cambiando modelo: {str(e)[:100]}"
+            return error_msg, current_info, self.get_system_stats_markdown()
+    
+    # ===== FUNCIONES EXISTENTES (MODIFICADAS LEVEMENTE) =====
     
     def format_stats_detailed(self, stats):
         """Formatea las estadísticas para mostrar en Markdown"""
@@ -279,9 +314,9 @@ class GradioInterface:
         md = f"""## 📊 **ESTADO DEL SISTEMA**
 
 ### 🤖 MODELO ACTIVO
-• **Nombre:** {model_info['display_name']}
-• **Descripción:** {model_info['description']}
-• **Memoria requerida:** {model_info['memory_required']}
+• **Nombre:** {model_info.get('display_name', 'Desconocido')}
+• **Descripción:** {model_info.get('description', 'N/A')}
+• **Memoria requerida:** {model_info.get('memory_required', 'N/A')}
 • **Compatible con GPU:** {'✅ Sí' if model_info.get('gpu_sufficient', True) else '⚠️ Limitada'}
 
 ### 📚 DOCUMENTOS
@@ -306,11 +341,6 @@ class GradioInterface:
 """
         
         return md
-
-    # Mantén todas las demás funciones EXACTAMENTE como están:
-    # get_system_stats_markdown, chat_function, process_pdfs_function, 
-    # test_system_function, search_by_theme_function
-    # ... (copia tus funciones exactamente como las tienes) ...
 
     def get_system_stats_markdown(self):
         """Obtiene y formatea las estadísticas del sistema para Markdown"""
@@ -345,7 +375,9 @@ class GradioInterface:
             
             # 4. Añadir metadata de la respuesta
             answer += f"\n\n---\n"
-            answer += f"📊 **Metadata:** {result['docs_used']} docs | {result['response_length']} chars | {result['model']}"
+            model_info = self.orchestrator.get_current_model_info()
+            model_name = model_info.get('display_name', 'Desconocido')
+            answer += f"📊 **Metadata:** {result['docs_used']} docs | {result['response_length']} chars | {model_name}"
             
             # 5. Actualizar historial
             history.append([message, answer])
@@ -450,6 +482,10 @@ class GradioInterface:
             # Obtener estadísticas
             stats = self.orchestrator.get_system_info()
             
+            # Obtener información del modelo actual
+            model_info = self.orchestrator.get_current_model_info()
+            model_name = model_info.get('display_name', 'Salamandra-7B')
+            
             # Información de GPU
             gpu_info = ""
             if torch.cuda.is_available():
@@ -464,7 +500,7 @@ class GradioInterface:
 
 ✅ **COMPONENTES VERIFICADOS:**
 • **Arquitectura:** Optimizada v2.0 (análisis en indexación)
-• **Modelo LLM:** Salamandra-7B en 4-bit
+• **Modelo LLM:** {model_name}
 • **Base de vectores:** {stats.get('total_chunks', 0):,} chunks con metadatos enriquecidos
 • **Documentos procesados:** {stats.get('total_pdfs', 0)}
 {gpu_info.strip()}
