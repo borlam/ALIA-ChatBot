@@ -34,70 +34,106 @@ class ChatEngine:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         
         print(f"✅ Modelo 7B cargado en modo optimizado")
-    
-    def build_intelligent_context(self, question: str, documents: List[Dict]) -> str:
-        """
-        Construye contexto INTELIGENTE usando análisis pre-existente
-        """
-        if not documents:
-            return "No hay documentos relevantes para esta pregunta."
-        
-        context_parts = []
-        
-        # 1. DOCUMENTOS MÁS RELEVANTES (ya vienen ordenados por score)
-        context_parts.append("### 📚 INFORMACIÓN DOCUMENTAL RELEVANTE:")
-        
-        for i, doc in enumerate(documents[:3]):  # Máximo 3 documentos
-            source = doc.get('pdf_title', f'Documento {i+1}')
-            text_preview = doc['text'][:300] + "..." if len(doc['text']) > 300 else doc['text']
-            
-            # Usar metadatos enriquecidos si están disponibles
-            enriched = doc.get('enriched_metadata', {})
-            
-            context_parts.append(f"\n**{source}**")
-            context_parts.append(f"*Contenido relevante:* {text_preview}")
-            
-            if enriched.get('has_full_analysis'):
-                themes = enriched.get('themes', [])
-                if themes:
-                    context_parts.append(f"*Temas del documento:* {', '.join(themes[:3])}")
-            
-            # Separador
-            if i < len(documents[:3]) - 1:
-                context_parts.append("---")
-        
-        return '\n'.join(context_parts)
-    
-    def build_optimized_prompt(self, question: str, context: str) -> str:
-        """Prompt optimizado y eficiente"""
-        
-        return f"""Eres regerIA, especialista en historia hispanoamericana.
 
-CONTEXTO DOCUMENTAL DISPONIBLE:
+    def compute_confidence(self, documents: List[Dict]) -> str:
+        if not documents:
+            return "low"
+
+        scores = [doc.get("score", 0) for doc in documents[:5]]
+        avg_score = sum(scores) / len(scores)
+
+        if avg_score >= 0.75 and len(documents) >= 3:
+            return "high"
+        elif avg_score >= 0.55:
+            return "medium"
+        else:
+            return "low"
+
+    def build_intelligent_context(self, question: str, documents: List[Dict]) -> str:
+        if not documents:
+            return ""
+
+        parts = []
+
+        for doc in documents[:6]:  # ⬅️ subir a 6
+            text = doc["text"]
+
+            if len(text) > 400:
+                text = text[:400]
+
+            parts.append(text)
+
+        return "\n\n".join(parts)
+
+    def build_prompt_with_confidence(self, question: str, context: str, confidence: str) -> str:
+        tone = {
+            "high": "Responde con seguridad y detalle.",
+            "medium": "Responde de forma natural, indicando matices si es necesario.",
+            "low": (
+                "Responde de forma conversacional. "
+                "Si no estás completamente seguro, indícalo de manera natural "
+                "y evita afirmaciones categóricas."
+            )
+        }[confidence]
+
+        return f"""
+Eres regerIA, un asistente conversacional experto en historia hispanoamericana.
+Hablas de forma clara, cercana y natural.
+
+Contexto disponible (puede ser parcial o incompleto):
 {context}
 
-INSTRUCCIONES:
-1. Responde de forma clara y precisa a la pregunta
-2. Usa información específica de los documentos cuando sea relevante
-3. Complementa con tu conocimiento general cuando sea útil
-4. Si un documento menciona algo específico, cítalo brevemente
-5. Sé conciso pero completo
+Instrucciones:
+- Usa el contexto si es relevante.
+- Si el contexto no es suficiente, razona con tu conocimiento general.
+- No inventes datos específicos que no aparezcan en el contexto.
+- {tone}
+- Responde siempre en español.
 
-PREGUNTA: {question}
+Pregunta:
+{question}
 
-RESPUESTA:"""
-    
+Respuesta:
+"""
+
+
+    def build_optimized_prompt(self, question: str, context: str) -> str:
+        return f"""
+Eres regerIA, un asistente conversacional experto en historia hispanoamericana.
+Hablas de forma clara, natural y cercana.
+
+Contexto disponible (puede ser parcial o incompleto):
+{context}
+
+Instrucciones:
+- Usa el contexto si es relevante.
+- Si el contexto no es suficiente, razona con tu conocimiento general.
+- Si no estás completamente seguro, dilo de forma natural.
+- No inventes citas específicas si no aparecen en el contexto.
+- Responde siempre en español.
+
+Pregunta:
+{question}
+
+Respuesta:
+"""
+   
     def generate_response(self, question: str, context_docs: List[Dict], max_chars: int = 2000) -> str:
         """Genera respuesta RÁPIDA usando análisis pre-existente"""
         
         start_time = datetime.now()
         
-        # 1. Construir contexto INTELIGENTE (RÁPIDO)
+        confidence = self.compute_confidence(context_docs)
         context = self.build_intelligent_context(question, context_docs)
-        
-        # 2. Prompt optimizado
-        prompt = self.build_optimized_prompt(question, context)
-        
+        prompt = self.build_prompt_with_confidence(question, context, confidence)
+
+        if confidence == "high":
+            temperature = 0.6
+        elif confidence == "medium":
+            temperature = 0.7
+        else:
+            temperature = 0.85
+
         # 3. Tokenización eficiente
         inputs = self.tokenizer(
             prompt,
@@ -111,7 +147,7 @@ RESPUESTA:"""
             outputs = self.model.generate(
                 **inputs,
                 max_new_tokens=600,  # Suficiente para respuestas claras
-                temperature=0.7,
+                temperature=temperature,
                 do_sample=True,
                 top_p=0.9,
                 repetition_penalty=1.15,
