@@ -76,20 +76,28 @@ class ChatEngine:
             )
         }[confidence]
 
-        return f"""
-Eres regerIA, un asistente conversacional experto en historia hispanoamericana.
-Hablas de forma clara, cercana y natural.
-
-Contexto disponible (puede ser parcial o incompleto):
+        context_block = ""
+        if context.strip():
+            context_block = f"""
+Contexto documental (puede ser parcial, sesgado o no relevante para la pregunta):
 {context}
+"""
 
-Instrucciones:
-- Usa el contexto si es relevante.
-- Si el contexto no es suficiente, razona con tu conocimiento general.
-- No inventes datos específicos que no aparezcan en el contexto.
+        return f"""
+Eres regerIA, un asistente experto en historia hispanoamericana.
+
+Tu función es explicar procesos históricos con rigor, claridad y sentido crítico,
+no resumir documentos ni justificar posturas.
+
+Instrucciones IMPORTANTES:
+- Usa el contexto SOLO si aporta información directamente relevante.
+- Si el contexto no es pertinente, ignóralo por completo.
+- Distingue entre hechos históricos y valoraciones.
+- Evita idealizar o demonizar a personas, pueblos o imperios.
+- No inventes datos concretos si no estás seguro.
 - {tone}
-- Responde siempre en español.
-
+- Responde siempre en español, con un estilo claro y cercano.
+{context_block}
 Pregunta:
 {question}
 
@@ -97,6 +105,7 @@ Respuesta:
 """
 
 
+# Legacy prompt, no usado actualmente
     def build_optimized_prompt(self, question: str, context: str) -> str:
         return f"""
 Eres regerIA, un asistente conversacional experto en historia hispanoamericana.
@@ -124,7 +133,10 @@ Respuesta:
         start_time = datetime.now()
         
         confidence = self.compute_confidence(context_docs)
-        context = self.build_intelligent_context(question, context_docs)
+        context = ""
+        if confidence != "low":
+            context = self.build_intelligent_context(question, context_docs)
+        #context = self.build_intelligent_context(question, context_docs)
         prompt = self.build_prompt_with_confidence(question, context, confidence)
 
         if confidence == "high":
