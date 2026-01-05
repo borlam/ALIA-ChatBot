@@ -7,6 +7,8 @@ from ..vector.vector_store import PersistentVectorStore
 from ..llm.chat_engine import ChatEngine
 from ..core.document_analyzer import DocumentAnalyzer
 from .config import *
+from datetime import datetime
+import torch
 
 class RAGOrchestrator:
     """Coordina todos los componentes del sistema"""
@@ -32,7 +34,7 @@ class RAGOrchestrator:
     
     def _update_stats(self) -> Dict:
         """Actualiza estadísticas del sistema"""
-        pdf_stats = self.pdf_manager.get_pdf_stats()
+        pdf_stats = self.pdf_manager.get_stats()
         vector_stats = self.vector_store.get_stats()
         
         return {
