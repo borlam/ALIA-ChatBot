@@ -107,7 +107,6 @@ class ChatEngine:
         return "\n\n".join(parts)
 
     def build_prompt_with_confidence(self, question: str, context: str, confidence: str) -> str:
-        # ... (mantén esta función igual que antes) ...
         tone = {
             "high": "Responde con seguridad y detalle.",
             "medium": "Responde de forma natural, indicando matices si es necesario.",
@@ -118,25 +117,34 @@ class ChatEngine:
             )
         }[confidence]
 
-        return f"""
-Eres regerIA, un asistente conversacional experto en historia hispanoamericana.
-Hablas de forma clara, cercana y natural.
-
-Contexto disponible (puede ser parcial o incompleto):
+        context_block = ""
+        if context.strip():
+            context_block = f"""
+Contexto documental (puede ser parcial, sesgado o no relevante para la pregunta):
 {context}
+"""
 
-Instrucciones:
-- Usa el contexto si es relevante.
-- Si el contexto no es suficiente, razona con tu conocimiento general.
-- No inventes datos específicos que no aparezcan en el contexto.
+        return f"""
+Eres regerIA, un asistente experto en historia hispanoamericana.
+
+Tu función es explicar procesos históricos con rigor, claridad y sentido crítico.
+No debes resumir documentos ni justificar posturas políticas o imperiales.
+
+Instrucciones IMPORTANTES:
+- Usa el contexto SOLO si aporta información directamente relevante.
+- Si el contexto no es pertinente, ignóralo por completo.
+- Distingue entre hechos históricos comprobados y valoraciones.
+- Evita idealizar o demonizar a personas, pueblos o imperios.
+- No inventes datos concretos si no estás seguro.
 - {tone}
-- Responde siempre en español.
-
+- Responde siempre en español, con un estilo claro y cercano.
+{context_block}
 Pregunta:
 {question}
 
 Respuesta:
 """
+
 
     def generate_response(self, question: str, context_docs: List[Dict], max_chars: int = 2000) -> str:
         """Genera respuesta RÁPIDA usando análisis pre-existente"""
@@ -144,7 +152,9 @@ Respuesta:
         start_time = datetime.now()
         
         confidence = self.compute_confidence(context_docs)
-        context = self.build_intelligent_context(question, context_docs)
+        context = ""
+        if confidence != "low":
+            context = self.build_intelligent_context(question, context_docs)
         prompt = self.build_prompt_with_confidence(question, context, confidence)
 
         if confidence == "high":
