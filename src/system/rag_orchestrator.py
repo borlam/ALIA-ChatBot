@@ -213,3 +213,12 @@ class RAGOrchestrator:
     def search_by_theme(self, theme: str) -> List[Dict]:
         """Busca documentos por tema (usando análisis previo)"""
         return self.pdf_manager.search_by_theme(theme)
+
+    def reload_llm(self, model_key: str):
+        """Recarga completamente el LLM"""
+        if hasattr(self, "chat_engine") and self.chat_engine:
+            self.chat_engine.unload_model()
+            self.chat_engine = None
+
+        set_active_model(model_key)
+        self.chat_engine = ChatEngine(model_key)

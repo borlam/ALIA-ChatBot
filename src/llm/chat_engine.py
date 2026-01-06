@@ -8,8 +8,18 @@ import re
 from datetime import datetime
 from ..system.config import *
 
+_ACTIVE_ENGINE = None
+
 class ChatEngine:
     def __init__(self, model_key: str = None):
+
+        global _ACTIVE_ENGINE
+
+        # Si hay un engine activo, descargarlo
+        if _ACTIVE_ENGINE is not None:
+            print("🔄 Cambiando de modelo: liberando anterior...")
+            _ACTIVE_ENGINE.unload_model()
+            _ACTIVE_ENGINE = None
         """Inicializa el motor de chat con un modelo específico"""
         
         # Usar modelo por defecto si no se especifica
@@ -73,6 +83,7 @@ class ChatEngine:
         
         # Almacenar info del modelo
         self.model_info = model_info
+        _ACTIVE_ENGINE = self
 
     def compute_confidence(self, documents: List[Dict]) -> str:
         # ... (mantén esta función igual que antes) ...
@@ -225,3 +236,22 @@ Respuesta:
     def get_model_info(self):
         """Obtiene información del modelo actual"""
         return self.model_info
+
+    def unload_model(self):
+        """Libera completamente el modelo y la memoria GPU"""
+        try:
+            if hasattr(self, "model"):
+                del self.model
+            if hasattr(self, "tokenizer"):
+                del self.tokenizer
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.ipc_collect()
+
+            gc.collect()
+
+            print("🧹 Modelo descargado y memoria liberada")
+
+        except Exception as e:
+            print(f"⚠️ Error liberando memoria: {e}")

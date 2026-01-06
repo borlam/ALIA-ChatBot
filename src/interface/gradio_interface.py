@@ -294,6 +294,7 @@ class GradioInterface:
             return f"❌ Error obteniendo información: {str(e)[:100]}"
     
     def _change_model(self, model_key: str) -> Tuple[str, str, str]:
+        self.orchestrator.reload_llm(model_key)
         """Función para cambiar el modelo de lenguaje"""
         print(f"\n🔄 INTENTANDO CAMBIAR MODELO A: {model_key}")
         
