@@ -35,7 +35,7 @@ AVAILABLE_MODELS = {
 }
 
 # Modelo activo
-ACTIVE_MODEL_KEY = "salamandra7b"
+ACTIVE_MODEL_KEY = "alia40b"
 MODEL_NAME = AVAILABLE_MODELS[ACTIVE_MODEL_KEY]["name"]
 
 # Configuración de embeddings
