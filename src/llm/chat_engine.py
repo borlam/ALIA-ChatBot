@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Motor de chat SIMPLIFICADO (usa análisis ya hecho)"""
 
+import gc
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from typing import List, Dict
@@ -8,38 +9,62 @@ import re
 from datetime import datetime
 from ..system.config import *
 
-_ACTIVE_ENGINE = None
+# Variable global para tracking
+_ACTIVE_MODEL_INSTANCE = None
 
 class ChatEngine:
     def __init__(self, model_key: str = None):
-
-        global _ACTIVE_ENGINE
-
-        # Si hay un engine activo, descargarlo
-        if _ACTIVE_ENGINE is not None:
-            print("🔄 Cambiando de modelo: liberando anterior...")
-            _ACTIVE_ENGINE.unload_model()
-            _ACTIVE_ENGINE = None
         """Inicializa el motor de chat con un modelo específico"""
+        global _ACTIVE_MODEL_INSTANCE
         
-        # Usar modelo por defecto si no se especifica
+        # 1. Liberar modelo anterior si existe
+        if _ACTIVE_MODEL_INSTANCE is not None:
+            print("🔄 Cambiando de modelo: liberando anterior...")
+            try:
+                _ACTIVE_MODEL_INSTANCE.unload_model()
+            except:
+                pass
+            _ACTIVE_MODEL_INSTANCE = None
+        
+        # 2. DEBUG: Mostrar qué modelo vamos a cargar
+        print(f"\n🧠 INICIALIZANDO CHAT ENGINE")
+        print(f"   Modelo solicitado: {model_key or 'por defecto'}")
+        
+        # 3. Actualizar configuración si se especifica un modelo
         if model_key and model_key in get_available_models_list():
+            print(f"   Cambiando modelo activo a: {model_key}")
             set_active_model(model_key)
+        else:
+            print(f"   Usando modelo activo actual: {ACTIVE_MODEL_KEY}")
         
-        print(f"🧠 Cargando modelo {MODEL_NAME} (modo optimizado)...")
-        print(f"📊 Configuración: {MAX_TOKENS} tokens máx, {TEMPERATURE} temperatura")
+        # 4. Obtener información del modelo actual DESPUÉS de actualizar
+        self.model_info = get_active_model_info()
+        print(f"   Configuración cargada: {self.model_info['name']}")
+        
+        # 5. Cargar el modelo usando la configuración actual
+        self._load_model()
+        
+        # 6. Registrar como instancia activa
+        _ACTIVE_MODEL_INSTANCE = self
+        
+        print(f"✅ Modelo {self.model_info['display_name']} cargado en modo optimizado")
+    
+    def _load_model(self):
+        """Carga el modelo usando la configuración actual"""
+        print(f"\n🧠 Cargando modelo {self.model_info['name']} (modo optimizado)...")
+        print(f"📊 Configuración: {self.model_info['max_tokens']} tokens máx, {TEMPERATURE} temperatura")
         
         # Configurar cuantización según modelo
-        model_info = get_active_model_info()
+        model_name = self.model_info["name"]
         
-        if "40b" in model_info["name"].lower():
+        if "40b" in model_name.lower():
             # Para ALIA-40B, usar cuantización más agresiva
             quantization_config = BitsAndBytesConfig(
                 load_in_4bit=True,
                 bnb_4bit_compute_dtype=torch.float16,
                 bnb_4bit_quant_type="nf4",
                 bnb_4bit_use_double_quant=True,
-                llm_int8_enable_fp32_cpu_offload=True  # Descargar a CPU si es necesario
+                llm_int8_enable_fp32_cpu_offload=True
             )
         else:
             # Para Salamandra 2B/7B
@@ -51,10 +76,10 @@ class ChatEngine:
             )
         
         try:
-            self.tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, trust_remote_code=True)
+            self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
             
             self.model = AutoModelForCausalLM.from_pretrained(
-                MODEL_NAME,
+                model_name,
                 quantization_config=quantization_config,
                 device_map="auto",
                 torch_dtype=torch.float16,
@@ -63,13 +88,13 @@ class ChatEngine:
             )
             
         except Exception as e:
-            print(f"⚠️ Error cargando modelo {MODEL_NAME}: {e}")
+            print(f"⚠️ Error cargando modelo {model_name}: {e}")
             print("🔄 Intentando cargar sin cuantización...")
             
             # Fallback: cargar sin cuantización
-            self.tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, trust_remote_code=True)
+            self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
             self.model = AutoModelForCausalLM.from_pretrained(
-                MODEL_NAME,
+                model_name,
                 device_map="auto",
                 torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
                 trust_remote_code=True
@@ -79,14 +104,9 @@ class ChatEngine:
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         
-        print(f"✅ Modelo {model_info['display_name']} cargado en modo optimizado")
-        
-        # Almacenar info del modelo
-        self.model_info = model_info
-        _ACTIVE_ENGINE = self
-
+        self.model_loaded = True
+    
     def compute_confidence(self, documents: List[Dict]) -> str:
-        # ... (mantén esta función igual que antes) ...
         if not documents:
             return "low"
 
@@ -101,7 +121,6 @@ class ChatEngine:
             return "low"
 
     def build_intelligent_context(self, question: str, documents: List[Dict]) -> str:
-        # ... (mantén esta función igual que antes) ...
         if not documents:
             return ""
 
@@ -156,7 +175,6 @@ Pregunta:
 Respuesta:
 """
 
-
     def generate_response(self, question: str, context_docs: List[Dict], max_chars: int = 2000) -> str:
         """Genera respuesta RÁPIDA usando análisis pre-existente"""
         
@@ -176,14 +194,15 @@ Respuesta:
             temperature = 0.85
 
         # Ajustar tokens según modelo
-        if "40b" in self.model_info["name"].lower():
-            max_length = 3500  # ALIA necesita más contexto
+        model_name = self.model_info["name"]
+        if "40b" in model_name.lower():
+            max_length = 3500
             max_new_tokens = 800
         else:
             max_length = 2500
-            max_new_tokens = MAX_TOKENS
+            max_new_tokens = self.model_info["max_tokens"]
 
-        # 3. Tokenización eficiente
+        # Tokenización
         inputs = self.tokenizer(
             prompt,
             return_tensors="pt",
@@ -191,7 +210,7 @@ Respuesta:
             max_length=max_length
         ).to(self.model.device)
         
-        # 4. Generación con parámetros optimizados
+        # Generación
         with torch.no_grad():
             outputs = self.model.generate(
                 **inputs,
@@ -204,7 +223,7 @@ Respuesta:
                 eos_token_id=self.tokenizer.eos_token_id
             )
         
-        # 5. Procesamiento simple
+        # Procesamiento
         response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
         
         # Extraer solo la respuesta
@@ -242,15 +261,17 @@ Respuesta:
         try:
             if hasattr(self, "model"):
                 del self.model
+                self.model = None
             if hasattr(self, "tokenizer"):
                 del self.tokenizer
+                self.tokenizer = None
 
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 torch.cuda.ipc_collect()
 
             gc.collect()
-
+            self.model_loaded = False
             print("🧹 Modelo descargado y memoria liberada")
 
         except Exception as e:
