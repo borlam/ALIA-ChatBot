@@ -319,7 +319,7 @@ Respuesta:
         # Descargar modelo
         model_path = hf_hub_download(
             repo_id=self.model_info["name"],
-            filename="alia-40b-instruct.Q8_0.gguf",
+            filename="ALIA-40b.Q8_0.gguf",
             cache_dir="models"
         )
         
