@@ -287,25 +287,71 @@ Respuesta:
         return self.model_info
 
     def unload_model(self):
-        """Libera completamente el modelo y la memoria GPU"""
+        """Libera COMPLETAMENTE el modelo y VRAM (especialmente para GGUF)"""
         try:
-            if hasattr(self, "model"):
+            print("🧹 INICIANDO LIBERACIÓN COMPLETA DE VRAM...")
+            
+            # 1. Liberar modelo llama-cpp ESPECÍFICAMENTE
+            if hasattr(self, 'model') and self.model is not None:
+                if self.model_type == "gguf":
+                    print("🔧 Liberando modelo GGUF (llama-cpp)...")
+                    try:
+                        # Método específico para llama-cpp
+                        if hasattr(self.model, '_ctx'):
+                            del self.model._ctx
+                        if hasattr(self.model, 'ctx'):
+                            del self.model.ctx
+                        # Forzar eliminación
+                        self.model.__del__()
+                    except:
+                        pass
+                
+                # Eliminar referencia
                 del self.model
                 self.model = None
+            
+            # 2. Liberar tokenizer y pipeline
             if hasattr(self, "tokenizer"):
                 del self.tokenizer
                 self.tokenizer = None
-
+            
+            if hasattr(self, "pipeline"):
+                del self.pipeline
+                self.pipeline = None
+            
+            # 3. LIMPIEZA AGGRESIVA DE VRAM CUDA
+            if torch.cuda.is_available():
+                print("🔥 Limpieza agresiva CUDA...")
+                
+                # Vaciar cachés
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+                
+                # Forzar recolección CUDA
+                torch.cuda.ipc_collect()
+                
+                # Forzar recolección Python
+                import gc
+                gc.collect()
+                
+                # Esperar y limpiar de nuevo
+                import time
+                time.sleep(1)  # Dar tiempo
+                torch.cuda.empty_cache()
+                
+                # Verificar
+                allocated = torch.cuda.memory_allocated() / 1e9
+                reserved = torch.cuda.memory_reserved() / 1e9
+                print(f"✅ VRAM liberada: {allocated:.1f}GB / {reserved:.1f}GB")
+            
+            self.model_loaded = False
+            print("✅ Modelo completamente descargado")
+            
+        except Exception as e:
+            print(f"⚠️ Error en liberación: {e}")
+            # Intentar limpiar aunque falle
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-                torch.cuda.ipc_collect()
-
-            gc.collect()
-            self.model_loaded = False
-            print("🧹 Modelo descargado y memoria liberada")
-
-        except Exception as e:
-            print(f"⚠️ Error liberando memoria: {e}")
 
 
     def _load_gguf_model(self):
