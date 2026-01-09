@@ -146,6 +146,7 @@ class ChatEngine:
         return "\n\n".join(parts)
 
     def build_prompt_with_confidence(self, question: str, context: str, confidence: str) -> str:
+        """Prompt para modelos Transformers (estilo original)"""
         tone = {
             "high": "Responde con seguridad y detalle.",
             "medium": "Responde de forma natural, indicando matices si es necesario.",
@@ -184,8 +185,111 @@ Pregunta:
 Respuesta:
 """
 
+    def _build_gguf_prompt(self, question: str, context: str, confidence: str) -> str:
+        """Prompt ESPECÍFICO optimizado para modelos GGUF/ALIA"""
+        
+        # Instrucciones claras y directas
+        instructions = {
+            "high": "Proporciona una respuesta detallada y completa, basándote en la información disponible.",
+            "medium": "Ofrece una respuesta equilibrada y matizada.",
+            "low": "Responde de manera conversacional. Si hay incertidumbre, menciónalo naturalmente."
+        }
+        
+        # Construir prompt estilo instruct
+        prompt_lines = [
+            "Eres regerIA, un asistente especializado en historia hispanoamericana.",
+            "Tu objetivo es explicar procesos históricos con precisión y claridad.",
+            "No hagas resúmenes extensos ni justifiques posturas políticas.",
+            "Utiliza el contexto proporcionado solo si es directamente relevante para responder.",
+            "Si el contexto no aplica, responde con tu conocimiento general.",
+            f"{instructions[confidence]}",
+            "Tu respuesta debe ser en español, con un estilo claro y accesible.",
+            ""
+        ]
+        
+        # Añadir contexto si existe
+        if context and confidence != "low":
+            prompt_lines.append("Información contextual para considerar:")
+            prompt_lines.append(context)
+            prompt_lines.append("")
+        
+        # Pregunta y formato claro
+        prompt_lines.append(f"Pregunta del usuario: {question}")
+        prompt_lines.append("")
+        prompt_lines.append("Por favor, desarrolla una respuesta adecuada:")
+        
+        return "\n".join(prompt_lines)
+
+    def _extract_gguf_response(self, response, original_prompt: str, original_question: str) -> str:
+        """Extrae y limpia la respuesta de GGUF"""
+        
+        # 1. Obtener texto crudo
+        if isinstance(response, dict) and "choices" in response:
+            raw_text = response["choices"][0]["text"].strip()
+        else:
+            raw_text = str(response).strip()
+        
+        print(f"🔍 GGUF raw response length: {len(raw_text)} chars")
+        
+        # 2. Eliminar el prompt si está incluido (GGUF a veces lo repite)
+        if original_prompt in raw_text:
+            cleaned = raw_text.replace(original_prompt, "").strip()
+            print(f"   → Prompt eliminado, quedan {len(cleaned)} chars")
+        else:
+            cleaned = raw_text
+        
+        # 3. Eliminar repeticiones de la pregunta
+        if original_question in cleaned:
+            cleaned = cleaned.replace(original_question, "").strip()
+        
+        # 4. Eliminar frases iniciales comunes
+        start_phrases = [
+            "La respuesta es:",
+            "Respuesta:",
+            "Basándome en la información:",
+            "Según el contexto:",
+            "Puedo responder que",
+            "En primer lugar,",
+            "Como regerIA,"
+        ]
+        
+        for phrase in start_phrases:
+            if cleaned.startswith(phrase):
+                cleaned = cleaned[len(phrase):].strip()
+                break
+        
+        # 5. Eliminar contenido duplicado o repetitivo
+        import re
+        # Eliminar repeticiones de "Eres regerIA"
+        if "Eres regerIA" in cleaned:
+            parts = cleaned.split("Eres regerIA")
+            if len(parts) > 1:
+                cleaned = parts[-1].strip()
+        
+        # 6. Limpiar espacios y saltos de línea excesivos
+        cleaned = re.sub(r'\n\s*\n\s*\n+', '\n\n', cleaned)
+        cleaned = cleaned.strip()
+        
+        print(f"   → Respuesta final: {len(cleaned)} chars")
+        
+        # 7. Si es demasiado corta, intentar extraer más
+        if len(cleaned) < 100 and len(raw_text) > 500:
+            print("⚠️  Respuesta muy corta, intentando extracción alternativa...")
+            # Buscar después de "respuesta" o "desarrolla"
+            for keyword in ["desarrolla", "respuesta", "Por favor"]:
+                if keyword in raw_text:
+                    parts = raw_text.split(keyword)
+                    if len(parts) > 1:
+                        alternative = parts[-1].strip()
+                        if len(alternative) > len(cleaned):
+                            cleaned = alternative
+                            print(f"   → Usando alternativa con {len(cleaned)} chars")
+                            break
+        
+        return cleaned
+
     def generate_response(self, question: str, context_docs: List[Dict], max_chars: int = 2000) -> str:
-        """Genera respuesta RÁPIDA usando análisis pre-existente"""
+        """Genera respuesta optimizada para GGUF y Transformers"""
         
         start_time = datetime.now()
         
@@ -193,8 +297,19 @@ Respuesta:
         context = ""
         if confidence != "low":
             context = self.build_intelligent_context(question, context_docs)
-        prompt = self.build_prompt_with_confidence(question, context, confidence)
-
+        
+        # ===== 1. CONSTRUIR PROMPT DIFERENTE SEGÚN TIPO =====
+        if self.model_type == "gguf":
+            prompt = self._build_gguf_prompt(question, context, confidence)
+            print("🔧 Usando prompt optimizado para GGUF")
+        else:
+            prompt = self.build_prompt_with_confidence(question, context, confidence)
+            print("🔧 Usando prompt estándar para Transformers")
+        
+        # DEBUG: Mostrar información del prompt
+        print(f"🔍 Prompt length: {len(prompt)} chars")
+        print(f"🔍 Model type: {self.model_type}")
+        
         if confidence == "high":
             temperature = 0.6
         elif confidence == "medium":
@@ -205,34 +320,40 @@ Respuesta:
         # Ajustar tokens según modelo
         model_name = self.model_info["name"]
         if "40b" in model_name.lower():
-            max_length = 3500
-            max_new_tokens = 800
+            max_new_tokens = 1200  # Aumentado para GGUF
+            print(f"🔍 Max tokens configurados: {max_new_tokens} (esperados ~{max_new_tokens * 3} chars)")
         else:
-            max_length = 2500
             max_new_tokens = self.model_info["max_tokens"]
 
-        # DETECTAR TIPO DE MODELO Y GENERAR SEGÚN CORRESPONDA
-        if hasattr(self, 'model_type') and self.model_type == "gguf":
-            # GENERACIÓN PARA MODELO GGUF
-            response = self.model(
-                prompt,
-                max_tokens=max_new_tokens,
-                temperature=temperature,
-                top_p=TOP_P,
-                top_k=TOP_K,
-                stop=["</s>", "###", "\n\n"],
-                echo=False
-            )
+        # ===== 2. GENERACIÓN SEGÚN TIPO =====
+        if self.model_type == "gguf":
+            # GENERACIÓN GGUF OPTIMIZADA
+            print(f"⚡ GGUF: generando hasta {max_new_tokens} tokens...")
             
-            # Extraer texto de la respuesta GGUF
-            if isinstance(response, dict) and "choices" in response:
-                response = response["choices"][0]["text"].strip()
-            else:
-                response = str(response).strip()
+            try:
+                response = self.model(
+                    prompt,
+                    max_tokens=max_new_tokens,
+                    temperature=temperature,
+                    top_p=TOP_P,
+                    top_k=TOP_K,
+                    repeat_penalty=1.1,  # 🔥 CLAVE para evitar repeticiones
+                    stop=["</s>", "###", "\n\n", "Human:", "Usuario:", "Pregunta:", "Question:", "Instrucción:"],
+                    echo=False,
+                    stream=False
+                )
                 
+            except Exception as e:
+                print(f"❌ Error en generación GGUF: {e}")
+                return "Error generando respuesta GGUF"
+            
+            # Extraer y limpiar respuesta GGUF
+            response_text = self._extract_gguf_response(response, prompt, question)
+            
         else:
-            # GENERACIÓN PARA MODELO TRANSFORMERS (TU CÓDIGO ORIGINAL)
-            # Tokenización
+            # GENERACIÓN TRANSFORMERS (tu código original)
+            max_length = 3500 if "40b" in model_name.lower() else 2500
+            
             inputs = self.tokenizer(
                 prompt,
                 return_tensors="pt",
@@ -240,7 +361,6 @@ Respuesta:
                 max_length=max_length
             ).to(self.model.device)
             
-            # Generación
             with torch.no_grad():
                 outputs = self.model.generate(
                     **inputs,
@@ -253,29 +373,29 @@ Respuesta:
                     eos_token_id=self.tokenizer.eos_token_id
                 )
             
-            # Procesamiento
-            response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            response_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            
+            # Extraer solo la respuesta para Transformers
+            if "RESPUESTA:" in response_text:
+                response_text = response_text.split("RESPUESTA:")[-1].strip()
+            elif "respuesta:" in response_text:
+                response_text = response_text.split("respuesta:")[-1].strip()
         
-        # Extraer solo la respuesta (común para ambos tipos)
-        if "RESPUESTA:" in response:
-            response = response.split("RESPUESTA:")[-1].strip()
-        elif "respuesta:" in response:
-            response = response.split("respuesta:")[-1].strip()
-        
+        # ===== 3. POST-PROCESAMIENTO =====
         # Limitar longitud
-        if len(response) > max_chars:
-            if "." in response[max_chars-200:max_chars]:
-                last_period = response[:max_chars].rfind(".")
-                response = response[:last_period+1]
+        if len(response_text) > max_chars:
+            if "." in response_text[max_chars-200:max_chars]:
+                last_period = response_text[:max_chars].rfind(".")
+                response_text = response_text[:last_period+1]
         
         # Estadísticas
         elapsed = (datetime.now() - start_time).total_seconds()
-        print(f"✅ Respuesta en {elapsed:.1f}s, {len(response)} caracteres (Modelo: {self.model_info['display_name']})")
+        print(f"✅ Respuesta en {elapsed:.1f}s, {len(response_text)} caracteres")
         
         # Limpiar memoria
         self.cleanup_memory()
         
-        return response.strip()
+        return response_text.strip()
     
     def cleanup_memory(self):
         """Limpia memoria GPU"""
@@ -352,7 +472,6 @@ Respuesta:
             # Intentar limpiar aunque falle
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-
 
     def _load_gguf_model(self):
         """Carga modelo GGUF con llama-cpp"""
