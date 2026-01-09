@@ -326,10 +326,10 @@ Respuesta:
         # Cargar con llama-cpp
         self.model = Llama(
             model_path=model_path,
-            n_ctx=8192,
+            n_ctx=2048,
             n_gpu_layers=-1,  # Todas las capas en GPU
-            n_batch=2048,
-            n_threads=8,  # Hilos para procesamiento auxiliar
+            n_batch=512,
+            n_threads=4,  # Hilos para procesamiento auxiliar
             verbose=True
         )
         
