@@ -326,10 +326,11 @@ Respuesta:
         # Cargar con llama-cpp
         self.model = Llama(
             model_path=model_path,
-            n_ctx=4096,
+            n_ctx=8192,
             n_gpu_layers=-1,  # Todas las capas en GPU
-            n_batch=512,
-            verbose=False
+            n_batch=2048,
+            n_threads=8,  # Hilos para procesamiento auxiliar
+            verbose=True
         )
         
         self.model_type = "gguf"  # <-- IMPORTANTE: Establecer el tipo
