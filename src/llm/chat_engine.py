@@ -8,6 +8,7 @@ from typing import List, Dict
 import re
 from datetime import datetime
 from ..system.config import *
+import os 
 
 # Variable global para tracking
 _ACTIVE_MODEL_INSTANCE = None
@@ -48,23 +49,30 @@ class ChatEngine:
         _ACTIVE_MODEL_INSTANCE = self
         
         print(f"✅ Modelo {self.model_info['display_name']} cargado en modo optimizado")
-    
+
     def _load_model(self):
         """Carga el modelo usando la configuración actual"""
         print(f"\n🧠 Cargando modelo {self.model_info['name']} (modo optimizado)...")
         print(f"📊 Configuración: {self.model_info['max_tokens']} tokens máx, {TEMPERATURE} temperatura")
         
-        # Configurar cuantización según modelo
         model_name = self.model_info["name"]
         
+        # DETECTAR si es GGUF
+        if "gguf" in model_name.lower():
+            print("🔧 Detectado modelo GGUF, cargando con llama-cpp...")
+            self._load_gguf_model()
+            return  # IMPORTANTE: Salir de la función aquí
+        
+        # ===== SOLO PARA MODELOS TRANSFORMERS (NO GGUF) =====
+        
+        # Configurar cuantización según modelo
         if "40b" in model_name.lower():
-            # Para ALIA-40B, usar cuantización más agresiva
+            # Para ALIA-40B original (si la mantienes)
             quantization_config = BitsAndBytesConfig(
                 load_in_4bit=True,
                 bnb_4bit_compute_dtype=torch.float16,
                 bnb_4bit_quant_type="nf4",
-                bnb_4bit_use_double_quant=True,
-                llm_int8_enable_fp32_cpu_offload=True
+                bnb_4bit_use_double_quant=True
             )
         else:
             # Para Salamandra 2B/7B
@@ -104,6 +112,7 @@ class ChatEngine:
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         
+        self.model_type = "transformers"  # <-- IMPORTANTE
         self.model_loaded = True
     
     def compute_confidence(self, documents: List[Dict]) -> str:
@@ -202,31 +211,52 @@ Respuesta:
             max_length = 2500
             max_new_tokens = self.model_info["max_tokens"]
 
-        # Tokenización
-        inputs = self.tokenizer(
-            prompt,
-            return_tensors="pt",
-            truncation=True,
-            max_length=max_length
-        ).to(self.model.device)
-        
-        # Generación
-        with torch.no_grad():
-            outputs = self.model.generate(
-                **inputs,
-                max_new_tokens=max_new_tokens,
+        # DETECTAR TIPO DE MODELO Y GENERAR SEGÚN CORRESPONDA
+        if hasattr(self, 'model_type') and self.model_type == "gguf":
+            # GENERACIÓN PARA MODELO GGUF
+            response = self.model(
+                prompt,
+                max_tokens=max_new_tokens,
                 temperature=temperature,
-                do_sample=True,
                 top_p=TOP_P,
-                repetition_penalty=1.15,
-                pad_token_id=self.tokenizer.pad_token_id,
-                eos_token_id=self.tokenizer.eos_token_id
+                top_k=TOP_K,
+                stop=["</s>", "###", "\n\n"],
+                echo=False
             )
+            
+            # Extraer texto de la respuesta GGUF
+            if isinstance(response, dict) and "choices" in response:
+                response = response["choices"][0]["text"].strip()
+            else:
+                response = str(response).strip()
+                
+        else:
+            # GENERACIÓN PARA MODELO TRANSFORMERS (TU CÓDIGO ORIGINAL)
+            # Tokenización
+            inputs = self.tokenizer(
+                prompt,
+                return_tensors="pt",
+                truncation=True,
+                max_length=max_length
+            ).to(self.model.device)
+            
+            # Generación
+            with torch.no_grad():
+                outputs = self.model.generate(
+                    **inputs,
+                    max_new_tokens=max_new_tokens,
+                    temperature=temperature,
+                    do_sample=True,
+                    top_p=TOP_P,
+                    repetition_penalty=1.15,
+                    pad_token_id=self.tokenizer.pad_token_id,
+                    eos_token_id=self.tokenizer.eos_token_id
+                )
+            
+            # Procesamiento
+            response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
         
-        # Procesamiento
-        response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-        
-        # Extraer solo la respuesta
+        # Extraer solo la respuesta (común para ambos tipos)
         if "RESPUESTA:" in response:
             response = response.split("RESPUESTA:")[-1].strip()
         elif "respuesta:" in response:
@@ -276,3 +306,32 @@ Respuesta:
 
         except Exception as e:
             print(f"⚠️ Error liberando memoria: {e}")
+
+
+    def _load_gguf_model(self):
+        """Carga modelo GGUF con llama-cpp"""
+        from llama_cpp import Llama
+        from huggingface_hub import hf_hub_download
+        
+        # Crear directorio para modelos si no existe
+        os.makedirs("models", exist_ok=True)
+        
+        # Descargar modelo
+        model_path = hf_hub_download(
+            repo_id=self.model_info["name"],
+            filename="alia-40b-instruct.Q8_0.gguf",
+            cache_dir="models"
+        )
+        
+        # Cargar con llama-cpp
+        self.model = Llama(
+            model_path=model_path,
+            n_ctx=4096,
+            n_gpu_layers=-1,  # Todas las capas en GPU
+            n_batch=512,
+            verbose=False
+        )
+        
+        self.model_type = "gguf"  # <-- IMPORTANTE: Establecer el tipo
+        self.model_loaded = True
+        print("✅ Modelo GGUF cargado")

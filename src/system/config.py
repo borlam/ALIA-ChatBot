@@ -25,11 +25,18 @@ AVAILABLE_MODELS = {
         "memory_required": "4-6 GB",
         "max_tokens": 600
     },
+    # "alia40b": {
+    #     "name": "BSC-LT/ALIA-40b-instruct",
+    #     "display_name": "ALIA 40B",
+    #     "description": "Modelo avanzado multilingüe",
+    #     "memory_required": "20-24 GB",
+    #     "max_tokens": 800
+    # }
     "alia40b": {
-        "name": "BSC-LT/ALIA-40b-instruct",
-        "display_name": "ALIA 40B",
-        "description": "Modelo avanzado multilingüe",
-        "memory_required": "20-24 GB",
+        "name": "mradermacher/ALIA-40b-GGUF",  # Solo cambiar esta línea
+        "display_name": "ALIA 40B GGUF",
+        "description": "Modelo avanzado GGUF cuantizado",
+        "memory_required": "15-18 GB",  # Reducir memoria requerida
         "max_tokens": 800
     }
 }
@@ -37,6 +44,7 @@ AVAILABLE_MODELS = {
 # Modelo activo
 ACTIVE_MODEL_KEY = "salamandra7b"
 MODEL_NAME = AVAILABLE_MODELS[ACTIVE_MODEL_KEY]["name"]
+MODEL_TYPE = "transformers"  # Valor por defecto
 
 # Configuración de embeddings
 EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
@@ -71,6 +79,15 @@ def set_active_model(model_key: str) -> bool:
     MODEL_NAME = AVAILABLE_MODELS[model_key]["name"]
     MAX_TOKENS = AVAILABLE_MODELS[model_key]["max_tokens"]
     
+    # DETECTAR tipo de modelo
+    if "gguf" in MODEL_NAME.lower():
+        MODEL_TYPE = "gguf"
+    else:
+        MODEL_TYPE = "transformers"
+    
+    print(f"✅ Modelo cambiado a: {AVAILABLE_MODELS[model_key]['display_name']}")
+    print(f"   🏷️  Tipo: {MODEL_TYPE}")  # <-- Añadir esta línea
+    print(f"   💾 Memoria requerida: {AVAILABLE_MODELS[model_key]['memory_required']}")
     print(f"✅ Modelo cambiado a: {AVAILABLE_MODELS[model_key]['display_name']}")
     print(f"   📝 Descripción: {AVAILABLE_MODELS[model_key]['description']}")
     print(f"   💾 Memoria requerida: {AVAILABLE_MODELS[model_key]['memory_required']}")
