@@ -186,105 +186,99 @@ Respuesta:
 """
 
     def _build_gguf_prompt(self, question: str, context: str, confidence: str) -> str:
-        """Prompt ESPECÍFICO optimizado para modelos GGUF/ALIA"""
+        """Formato CORRECTO para ALIA GGUF - usando tokens <|system|>, <|user|>, <|assistant|>"""
         
-        # Instrucciones claras y directas
-        instructions = {
-            "high": "Proporciona una respuesta detallada y completa, basándote en la información disponible.",
-            "medium": "Ofrece una respuesta equilibrada y matizada.",
-            "low": "Responde de manera conversacional. Si hay incertidumbre, menciónalo naturalmente."
+        # System message según confianza
+        system_messages = {
+            "high": "Eres regerIA, un asistente experto en historia hispanoamericana. Responde con precisión y detalle, basándote en la información proporcionada.",
+            "medium": "Eres regerIA, un asistente especializado en historia hispanoamericana. Ofrece respuestas equilibradas y completas.",
+            "low": "Eres regerIA, un asistente de historia hispanoamericana. Responde de manera clara y conversacional."
         }
         
-        # Construir prompt estilo instruct
-        prompt_lines = [
-            "Eres regerIA, un asistente especializado en historia hispanoamericana.",
-            "Tu objetivo es explicar procesos históricos con precisión y claridad.",
-            "No hagas resúmenes extensos ni justifiques posturas políticas.",
-            "Utiliza el contexto proporcionado solo si es directamente relevante para responder.",
-            "Si el contexto no aplica, responde con tu conocimiento general.",
-            f"{instructions[confidence]}",
-            "Tu respuesta debe ser en español, con un estilo claro y accesible.",
-            ""
-        ]
+        system_message = system_messages[confidence]
+        
+        # Construir el prompt del usuario
+        user_prompt = question
         
         # Añadir contexto si existe
         if context and confidence != "low":
-            prompt_lines.append("Información contextual para considerar:")
-            prompt_lines.append(context)
-            prompt_lines.append("")
+            user_prompt = f"Contexto: {context}\n\nPregunta: {question}"
         
-        # Pregunta y formato claro
-        prompt_lines.append(f"Pregunta del usuario: {question}")
-        prompt_lines.append("")
-        prompt_lines.append("Por favor, desarrolla una respuesta adecuada:")
+        # Formato EXACTO que ALIA entiende
+        prompt = f"""<|system|>
+{system_message}</s>
+<|user|>
+{user_prompt}</s>
+<|assistant|>
+"""
         
-        return "\n".join(prompt_lines)
+        return prompt
 
     def _extract_gguf_response(self, response, original_prompt: str, original_question: str) -> str:
-        """Extrae y limpia la respuesta de GGUF"""
+        """Extrae respuesta GGUF - optimizado para formato ALIA"""
         
         # 1. Obtener texto crudo
-        if isinstance(response, dict) and "choices" in response:
-            raw_text = response["choices"][0]["text"].strip()
+        if isinstance(response, dict):
+            if "choices" in response and len(response["choices"]) > 0:
+                raw_text = response["choices"][0]["text"].strip()
+            elif "text" in response:
+                raw_text = response["text"].strip()
+            else:
+                print(f"❌ Formato respuesta inesperado: {response.keys()}")
+                return ""
         else:
             raw_text = str(response).strip()
         
-        print(f"🔍 GGUF raw response length: {len(raw_text)} chars")
+        print(f"🔍 GGUF raw response: {len(raw_text)} chars")
         
-        # 2. Eliminar el prompt si está incluido (GGUF a veces lo repite)
+        # 2. DEBUG: Mostrar primeros 200 caracteres
+        if raw_text:
+            print(f"   Preview: '{raw_text[:200]}...'")
+        
+        # 3. Para ALIA GGUF, la respuesta ya debería ser limpia
+        # Pero eliminamos el prompt si se repite
         if original_prompt in raw_text:
-            cleaned = raw_text.replace(original_prompt, "").strip()
-            print(f"   → Prompt eliminado, quedan {len(cleaned)} chars")
+            # Tomar solo lo después del último </s><|assistant|>
+            if "</s><|assistant|>" in raw_text:
+                parts = raw_text.split("</s><|assistant|>")
+                if len(parts) > 1:
+                    cleaned = parts[-1].strip()
+                else:
+                    cleaned = raw_text.replace(original_prompt, "").strip()
+            else:
+                cleaned = raw_text.replace(original_prompt, "").strip()
         else:
             cleaned = raw_text
         
-        # 3. Eliminar repeticiones de la pregunta
+        # 4. Eliminar cualquier token restante del formato
+        tokens_to_remove = ["<|system|>", "<|user|>", "<|assistant|>", "</s>"]
+        for token in tokens_to_remove:
+            cleaned = cleaned.replace(token, "").strip()
+        
+        # 5. Eliminar repetición de la pregunta
         if original_question in cleaned:
             cleaned = cleaned.replace(original_question, "").strip()
         
-        # 4. Eliminar frases iniciales comunes
-        start_phrases = [
-            "La respuesta es:",
-            "Respuesta:",
-            "Basándome en la información:",
-            "Según el contexto:",
-            "Puedo responder que",
-            "En primer lugar,",
-            "Como regerIA,"
-        ]
-        
-        for phrase in start_phrases:
-            if cleaned.startswith(phrase):
-                cleaned = cleaned[len(phrase):].strip()
-                break
-        
-        # 5. Eliminar contenido duplicado o repetitivo
+        # 6. Limpiar espacios y newlines
         import re
-        # Eliminar repeticiones de "Eres regerIA"
-        if "Eres regerIA" in cleaned:
-            parts = cleaned.split("Eres regerIA")
-            if len(parts) > 1:
-                cleaned = parts[-1].strip()
-        
-        # 6. Limpiar espacios y saltos de línea excesivos
         cleaned = re.sub(r'\n\s*\n\s*\n+', '\n\n', cleaned)
         cleaned = cleaned.strip()
         
-        print(f"   → Respuesta final: {len(cleaned)} chars")
+        # 7. Si está vacío pero raw_text no lo está, usar raw_text
+        if not cleaned and raw_text:
+            print("⚠️  Respuesta extraída vacía, usando raw text")
+            # Buscar después de <|assistant|>
+            if "<|assistant|>" in raw_text:
+                parts = raw_text.split("<|assistant|>")
+                if len(parts) > 1:
+                    cleaned = parts[-1].strip()
+                    # Eliminar </s> si existe
+                    if cleaned.endswith("</s>"):
+                        cleaned = cleaned[:-4].strip()
+            else:
+                cleaned = raw_text[-1000:].strip()  # Últimos 1000 chars
         
-        # 7. Si es demasiado corta, intentar extraer más
-        if len(cleaned) < 100 and len(raw_text) > 500:
-            print("⚠️  Respuesta muy corta, intentando extracción alternativa...")
-            # Buscar después de "respuesta" o "desarrolla"
-            for keyword in ["desarrolla", "respuesta", "Por favor"]:
-                if keyword in raw_text:
-                    parts = raw_text.split(keyword)
-                    if len(parts) > 1:
-                        alternative = parts[-1].strip()
-                        if len(alternative) > len(cleaned):
-                            cleaned = alternative
-                            print(f"   → Usando alternativa con {len(cleaned)} chars")
-                            break
+        print(f"✅ Respuesta final: {len(cleaned)} chars")
         
         return cleaned
 
@@ -301,14 +295,12 @@ Respuesta:
         # ===== 1. CONSTRUIR PROMPT DIFERENTE SEGÚN TIPO =====
         if self.model_type == "gguf":
             prompt = self._build_gguf_prompt(question, context, confidence)
-            print("🔧 Usando prompt optimizado para GGUF")
+            print(f"🔧 GGUF prompt: {len(prompt)} chars")
+            # DEBUG: mostrar formato
+            print(f"   Formato: <|system|>...<|user|>...<|assistant|>")
         else:
             prompt = self.build_prompt_with_confidence(question, context, confidence)
-            print("🔧 Usando prompt estándar para Transformers")
-        
-        # DEBUG: Mostrar información del prompt
-        print(f"🔍 Prompt length: {len(prompt)} chars")
-        print(f"🔍 Model type: {self.model_type}")
+            print(f"🔧 Transformers prompt: {len(prompt)} chars")
         
         if confidence == "high":
             temperature = 0.6
@@ -321,24 +313,27 @@ Respuesta:
         model_name = self.model_info["name"]
         if "40b" in model_name.lower():
             max_new_tokens = 1200  # Aumentado para GGUF
-            print(f"🔍 Max tokens configurados: {max_new_tokens} (esperados ~{max_new_tokens * 3} chars)")
         else:
             max_new_tokens = self.model_info["max_tokens"]
+        
+        print(f"🔍 Max tokens: {max_new_tokens} (esperados ~{max_new_tokens * 4} chars)")
 
         # ===== 2. GENERACIÓN SEGÚN TIPO =====
         if self.model_type == "gguf":
-            # GENERACIÓN GGUF OPTIMIZADA
+            # GENERACIÓN GGUF OPTIMIZADA PARA ALIA
             print(f"⚡ GGUF: generando hasta {max_new_tokens} tokens...")
             
             try:
+                # PARÁMETROS OPTIMIZADOS PARA ALIA GGUF
                 response = self.model(
                     prompt,
                     max_tokens=max_new_tokens,
                     temperature=temperature,
                     top_p=TOP_P,
                     top_k=TOP_K,
-                    repeat_penalty=1.1,  # 🔥 CLAVE para evitar repeticiones
-                    stop=["</s>", "###", "\n\n", "Human:", "Usuario:", "Pregunta:", "Question:", "Instrucción:"],
+                    repeat_penalty=1.1,
+                    # IMPORTANTE: ALIA usa </s> como token de fin
+                    stop=["</s>", "<|end|>", "<|system|>", "<|user|>"],
                     echo=False,
                     stream=False
                 )
@@ -382,6 +377,11 @@ Respuesta:
                 response_text = response_text.split("respuesta:")[-1].strip()
         
         # ===== 3. POST-PROCESAMIENTO =====
+        # Si la respuesta está vacía, mensaje de error
+        if not response_text or len(response_text.strip()) == 0:
+            print("⚠️  ¡RESPUESTA VACÍA! Revisando configuración...")
+            response_text = "Lo siento, no pude generar una respuesta con el formato actual. Por favor, intenta reformular la pregunta."
+        
         # Limitar longitud
         if len(response_text) > max_chars:
             if "." in response_text[max_chars-200:max_chars]:
@@ -488,16 +488,44 @@ Respuesta:
             cache_dir="models"
         )
         
-        # Cargar con llama-cpp
+        print(f"✅ Modelo descargado: {os.path.basename(model_path)}")
+        
+        # CONFIGURACIÓN OPTIMIZADA PARA ALIA GGUF
+        print("🔧 Configurando modelo GGUF para ALIA...")
+        
         self.model = Llama(
             model_path=model_path,
-            n_ctx=2048,
+            n_ctx=4096,  # Aumentado para respuestas largas
             n_gpu_layers=-1,  # Todas las capas en GPU
             n_batch=512,
-            n_threads=4,  # Hilos para procesamiento auxiliar
-            verbose=True
+            n_threads=4,
+            verbose=False,  # Cambiar a True para debug
+            logits_all=False,
+            vocab_only=False,
+            use_mmap=True,
+            use_mlock=False,
+            embedding=False,
+            last_n_tokens_size=64
         )
         
-        self.model_type = "gguf"  # <-- IMPORTANTE: Establecer el tipo
+        self.model_type = "gguf"
         self.model_loaded = True
-        print("✅ Modelo GGUF cargado")
+        print("✅ Modelo GGUF cargado y configurado para ALIA")
+        
+        # Test rápido
+        print("🔍 Realizando test rápido de formato...")
+        test_prompt = """<|system|>
+Eres un asistente útil.</s>
+<|user|>
+Hola, ¿cómo estás?</s>
+<|assistant|>
+"""
+        try:
+            test_resp = self.model(test_prompt, max_tokens=10, temperature=0.1)
+            if isinstance(test_resp, dict) and "choices" in test_resp:
+                test_text = test_resp["choices"][0]["text"]
+                print(f"   Test OK: '{test_text[:50]}...'")
+            else:
+                print("   Test completado")
+        except Exception as e:
+            print(f"   Test error: {e}")
