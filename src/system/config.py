@@ -37,13 +37,12 @@ AVAILABLE_MODELS = {
         "display_name": "ALIA 40B GGUF",
         "description": "Modelo avanzado GGUF cuantizado",
         "memory_required": "15-18 GB",  # Reducir memoria requerida
-        "max_tokens": 1200,
-        "model_file": "ALIA-40b.Q8_0.gguf"
+        "max_tokens": 800
     }
 }
 
 # Modelo activo
-ACTIVE_MODEL_KEY = "alia40b"
+ACTIVE_MODEL_KEY = "salamandra7b"
 MODEL_NAME = AVAILABLE_MODELS[ACTIVE_MODEL_KEY]["name"]
 MODEL_TYPE = "transformers"  # Valor por defecto
 
