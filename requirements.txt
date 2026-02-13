@@ -1,18 +1,17 @@
 # requirements.txt - Para RAG Hispanidad en Python 3.12
 # Nota: ChromaDB no está disponible para Python 3.12, usar FAISS
 
-# PyTorch con CUDA 11.8 (Colab compatible)
+# PyTorch con CUDA 11.8
+--extra-index-url https://download.pytorch.org/whl/cu118
 torch==2.3.0
 torchvision==0.18.0
 torchaudio==2.3.0
---index-url https://download.pytorch.org/whl/cu118
 
 # Hugging Face ecosystem
-transformers>=4.36.0
-sentence-transformers>=2.2.2
-accelerate>=0.24.0
-
-# qdrant-client>=1.6.0  # Otra alternativa opcional
+transformers==4.37.2
+sentence-transformers==2.6.1
+accelerate==0.27.2
+huggingface-hub==0.20.3
 
 # Web Interface
 gradio==4.12.0
@@ -23,6 +22,6 @@ numpy>=1.24.0
 pandas>=2.0.0
 tqdm>=4.66.0
 python-dotenv>=1.0.0
-huggingface-hub>=0.20.0
 scipy>=1.11.0
 protobuf>=3.20.0
+
