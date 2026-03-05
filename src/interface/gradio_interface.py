@@ -55,7 +55,8 @@ class GradioInterface:
                     # Chatbot
                     chatbot = gr.Chatbot(
                         label="💬 Conversación Inteligente",
-                        height=500
+                        height=500,
+                        type="messages"
                     )
                     
                     # Área de entrada mejorada
@@ -404,14 +405,16 @@ class GradioInterface:
             answer += f"\n\n---\n"
             answer += f"🤖 **Modelo:** {model_info.get('display_name', 'Desconocido')} | 📚 Docs: {result['docs_used']}"
             
-            history.append([message, answer])
+            history.append({"role": "user", "content": message})
+            history.append({"role": "assistant", "content": answer})
             print(f"   ✅ Respuesta generada")
             
             return history, ""
             
         except Exception as e:
             error_msg = f"❌ Error: {str(e)[:100]}"
-            history.append([message, error_msg])
+            history.append({"role": "user", "content": message})
+            history.append({"role": "assistant", "content": error_msg})
             return history, ""
     
     def process_pdfs_function(self, files):
@@ -474,10 +477,12 @@ class GradioInterface:
 
 💡 **Sistema listo para uso.**"""
             
-            history.append([message or "Prueba", test_response])
+            history.append({"role": "user", "content": message or "Prueba"})
+            history.append({"role": "assistant", "content": test_response})
             return history, ""
             
         except Exception as e:
             error_msg = f"❌ Error en prueba: {str(e)[:100]}"
-            history.append([message or "Prueba", error_msg])
+            history.append({"role": "user", "content": message or "Prueba"})
+            history.append({"role": "assistant", "content": error_msg})
             return history, ""
