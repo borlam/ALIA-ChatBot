@@ -55,8 +55,7 @@ class GradioInterface:
                     # Chatbot
                     chatbot = gr.Chatbot(
                         label="💬 Conversación Inteligente",
-                        height=500,
-                        type="messages"
+                        height=500
                     )
                     
                     # Área de entrada mejorada
