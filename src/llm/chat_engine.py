@@ -54,26 +54,28 @@ class ChatEngine:
         print(f"\n🧠 Cargando modelo {self.model_info['name']} (modo optimizado)...")
         print(f"📊 Configuración: {self.model_info['max_tokens']} tokens máx, {TEMPERATURE} temperatura")
         
-        # Configurar cuantización según modelo
         model_name = self.model_info["name"]
-        
-        if "40b" in model_name.lower():
-            # Para ALIA-40B, usar cuantización más agresiva
-            quantization_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_compute_dtype=torch.float16,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_use_double_quant=True,
-                llm_int8_enable_fp32_cpu_offload=True
-            )
+
+        # Detectar el mejor dtype según la GPU disponible
+        if torch.cuda.is_available():
+            cap = torch.cuda.get_device_capability()
+            # bfloat16 disponible en Ampere (8.x) y superior (A100, H100, L4...)
+            compute_dtype = torch.bfloat16 if cap[0] >= 8 else torch.float16
+            torch_dtype = compute_dtype
+            print(f"   🖥️  GPU compute capability: {cap[0]}.{cap[1]} → dtype: {compute_dtype}")
         else:
-            # Para Salamandra 2B/7B
-            quantization_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_compute_dtype=torch.float16,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_use_double_quant=True,
-            )
+            compute_dtype = torch.float32
+            torch_dtype = torch.float32
+
+        # Configurar cuantización 4-bit
+        extra_bnb = {"llm_int8_enable_fp32_cpu_offload": True} if "40b" in model_name.lower() else {}
+        quantization_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=compute_dtype,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_use_double_quant=True,
+            **extra_bnb
+        )
         
         try:
             self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
@@ -82,23 +84,31 @@ class ChatEngine:
                 model_name,
                 quantization_config=quantization_config,
                 device_map="auto",
-                torch_dtype=torch.float16,
+                torch_dtype=torch_dtype,
                 trust_remote_code=True,
                 low_cpu_mem_usage=True
             )
-            
+
         except Exception as e:
-            print(f"⚠️ Error cargando modelo {model_name}: {e}")
-            print("🔄 Intentando cargar sin cuantización...")
-            
-            # Fallback: cargar sin cuantización
-            self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-            self.model = AutoModelForCausalLM.from_pretrained(
-                model_name,
-                device_map="auto",
-                torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-                trust_remote_code=True
-            )
+            print(f"⚠️ Error cargando modelo con cuantización: {e}")
+            print("🔄 Intentando cargar sin cuantización (float16/float32)...")
+            try:
+                self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    model_name,
+                    device_map="auto",
+                    torch_dtype=torch_dtype,
+                    trust_remote_code=True
+                )
+            except Exception as e2:
+                print(f"⚠️ Float16 falló ({e2}), cargando en CPU float32...")
+                self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    model_name,
+                    device_map="cpu",
+                    torch_dtype=torch.float32,
+                    trust_remote_code=True
+                )
         
         # Configurar tokenizer
         if self.tokenizer.pad_token is None:

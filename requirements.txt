@@ -1,18 +1,15 @@
 # requirements.txt - Para RAG Hispanidad en Python 3.12
-# Nota: ChromaDB no está disponible para Python 3.12, usar FAISS
-
-# PyTorch con CUDA 11.8
---extra-index-url https://download.pytorch.org/whl/cu118
-torch==2.3.0
-torchvision==0.18.0
-torchaudio==2.3.0
+# NOTA: NO reinstalar torch en Colab; Colab ya tiene torch compatible con la GPU.
+# Si ejecutas en local, instala torch manualmente según tu CUDA:
+#   CUDA 12.1: pip install torch --index-url https://download.pytorch.org/whl/cu121
+#   CUDA 11.8: pip install torch --index-url https://download.pytorch.org/whl/cu118
 
 # Hugging Face ecosystem
-transformers==4.37.2
-sentence-transformers==2.6.1
-accelerate==0.27.2
-huggingface-hub==0.20.3
-bitsandbytes>=0.42.0
+transformers>=4.40.0
+sentence-transformers>=2.6.1
+accelerate>=0.27.2
+huggingface-hub>=0.20.3
+bitsandbytes>=0.43.0
 
 # Web Interface
 gradio==4.12.0

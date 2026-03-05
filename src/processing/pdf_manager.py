@@ -390,6 +390,7 @@ class PDFManager:
         
         return {
             'total_documents': total_docs,
+            'total_pdfs': total_docs,
             'total_text_characters': total_text,
             'total_pages': total_pages,
             'avg_pages_per_doc': total_pages / max(total_docs, 1),

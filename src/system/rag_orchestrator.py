@@ -191,7 +191,7 @@ class RAGOrchestrator:
             'chunks_added': chunks_added,
             'analysis_done': True,
             'document_themes': analysis.get('themes', [])[:3],
-            'total_pdfs': self.system_stats['total_pdfs']
+            'total_pdfs': self.system_stats.get('total_pdfs', self.system_stats.get('total_documents', 0))
         }
     
     def query(self, question: str, max_docs: int = 3) -> Dict:
