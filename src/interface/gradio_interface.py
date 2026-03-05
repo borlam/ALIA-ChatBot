@@ -427,17 +427,25 @@ class GradioInterface:
         
         for i, file in enumerate(files):
             try:
-                result = self.orchestrator.process_document(file, file.name)
+                file_name = getattr(file, 'name', None)
+                if isinstance(file, str):
+                    file_name = file
+
+                result = self.orchestrator.process_document(file, file_name)
                 
                 if result.get('success', False):
                     chunks = result.get('chunks_added', 0)
                     total_chunks += chunks
                     results.append(f"✅ {result.get('filename', 'PDF')}: {chunks} chunks")
                 else:
-                    results.append(f"❌ {result.get('filename', 'PDF')}: Error")
+                    error = result.get('error', 'Error desconocido')
+                    results.append(f"❌ {result.get('filename', 'PDF')}: {error}")
                     
             except Exception as e:
-                results.append(f"❌ {file.name}: Error")
+                fallback_name = getattr(file, 'name', None) if file is not None else None
+                if isinstance(file, str):
+                    fallback_name = file
+                results.append(f"❌ {fallback_name or 'PDF'}: {str(e)[:120]}")
         
         if total_chunks > 0:
             summary = f"✅ **{len(files)} PDFs procesados** ({total_chunks} chunks)"

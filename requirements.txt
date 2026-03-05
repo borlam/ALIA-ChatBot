@@ -12,9 +12,18 @@ transformers==4.37.2
 sentence-transformers==2.6.1
 accelerate==0.27.2
 huggingface-hub==0.20.3
+bitsandbytes>=0.42.0
 
 # Web Interface
 gradio==4.12.0
+
+# PDF processing
+PyMuPDF>=1.24.0
+pdfplumber>=0.11.0
+Pillow>=10.0.0
+
+# Vector store
+chromadb>=0.5.0
 
 # Utilities
 pytesseract

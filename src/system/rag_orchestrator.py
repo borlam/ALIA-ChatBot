@@ -3,6 +3,7 @@
 
 from typing import Dict, List, Any
 import torch
+import os
 from datetime import datetime
 from ..processing.pdf_manager import PDFManager
 from ..vector.vector_store import PersistentVectorStore
@@ -124,8 +125,41 @@ class RAGOrchestrator:
         """
         Procesa documento COMPLETO con análisis incluido
         """
+        try:
+            normalized_filename = filename
+            pdf_bytes = None
+
+            if isinstance(pdf_file, (bytes, bytearray)):
+                pdf_bytes = bytes(pdf_file)
+            elif isinstance(pdf_file, str):
+                normalized_filename = normalized_filename or pdf_file
+                with open(pdf_file, 'rb') as f:
+                    pdf_bytes = f.read()
+            elif hasattr(pdf_file, 'read'):
+                source_name = getattr(pdf_file, 'name', None)
+                normalized_filename = normalized_filename or source_name
+                pdf_bytes = pdf_file.read()
+                if isinstance(pdf_bytes, str):
+                    pdf_bytes = pdf_bytes.encode('utf-8')
+                elif not isinstance(pdf_bytes, (bytes, bytearray)):
+                    raise TypeError(f"Tipo de lectura no soportado: {type(pdf_bytes)}")
+                pdf_bytes = bytes(pdf_bytes)
+            else:
+                raise TypeError(f"Tipo de archivo no soportado: {type(pdf_file)}")
+
+            normalized_filename = os.path.basename(normalized_filename) if normalized_filename else "documento.pdf"
+            if not normalized_filename.lower().endswith('.pdf'):
+                normalized_filename = f"{normalized_filename}.pdf"
+
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f"No se pudo leer el PDF de entrada: {str(e)}",
+                'filename': filename or 'documento.pdf'
+            }
+
         # 1. Extraer y analizar (PDFManager ya lo hace)
-        result = self.pdf_manager.process_pdf(pdf_file, filename)
+        result = self.pdf_manager.process_pdf(pdf_bytes, normalized_filename)
         
         if not result['success']:
             return result
@@ -153,7 +187,7 @@ class RAGOrchestrator:
         return {
             'success': True,
             'pdf_id': pdf_id,
-            'filename': filename,
+            'filename': normalized_filename,
             'chunks_added': chunks_added,
             'analysis_done': True,
             'document_themes': analysis.get('themes', [])[:3],
