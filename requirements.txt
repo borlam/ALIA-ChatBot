@@ -6,13 +6,13 @@
 
 # Hugging Face ecosystem
 transformers>=4.40.0
-sentence-transformers>=2.6.1
+sentence-transformers>=3.0.0
 accelerate>=0.27.2
-huggingface-hub>=0.20.3
+huggingface-hub>=0.25.0
 bitsandbytes>=0.43.0
 
 # Web Interface
-gradio==4.12.0
+gradio>=4.44.0
 
 # PDF processing
 PyMuPDF>=1.24.0
