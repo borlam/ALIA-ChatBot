@@ -109,7 +109,27 @@ class PersistentVectorStore:
                     chunk_num += 1
                     current_chunk = para
         
-        # ... (resto de la lógica de chunks) ...
+        # Añadir el último chunk pendiente (el bucle no lo guarda en el else final)
+        if current_chunk.strip():
+            chunk_metadata = {
+                'pdf_id': pdf_id,
+                'pdf_title': pdf_metadata.get('title', pdf_metadata.get('filename', '')),
+                'pdf_author': pdf_metadata.get('author', ''),
+                'pdf_pages': pdf_metadata.get('pages', 0),
+                'chunk_num': chunk_num,
+                'total_chunks': 0,
+                'type': 'historia_hispanica',
+                'source': 'PDF',
+                'quality': pdf_metadata.get('quality', 'media'),
+                'document_themes': json.dumps(analysis.get('themes', [])),
+                'document_summary': analysis.get('summary', '')[:200],
+                'document_entities': json.dumps(analysis.get('entities', {})),
+                'analysis_version': analysis.get('analysis_version', '1.0'),
+                'has_full_analysis': True
+            }
+            chunks.append(current_chunk)
+            metadatas.append(chunk_metadata)
+            ids.append(f"{pdf_id}_chunk_{chunk_num}")
         
         if chunks:
             self.collection.add(
