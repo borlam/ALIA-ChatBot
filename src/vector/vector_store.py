@@ -2,9 +2,41 @@
 """Almacén vectorial con metadatos enriquecidos"""
 
 import chromadb
+import re
+import unicodedata
 from chromadb.config import Settings
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import json
+
+
+def _normalize(text: str) -> str:
+    """Elimina tildes y pasa a minúsculas para comparaciones."""
+    nfkd = unicodedata.normalize("NFKD", text)
+    return "".join(c for c in nfkd if not unicodedata.combining(c)).lower()
+
+
+def _extract_keyword_terms(query: str) -> List[str]:
+    """
+    Extrae términos literales que deben aparecer en el chunk.
+    Detecta referencias del tipo: 'artículo 11', 'capítulo IV', 'art. 3', etc.
+    Devuelve variantes con/sin tilde para mayor cobertura.
+    """
+    terms = []
+    q_norm = _normalize(query)
+
+    # Artículos: "artículo 11", "articulo 11", "art. 11", "art 11"
+    for m in re.finditer(r'\bart[i\.]?[c\.]?[u\.]?[l\.]?[o\.]?\s*\.?\s*(\d+)', q_norm):
+        num = m.group(1)
+        terms.append(f"Artículo {num}.")
+        terms.append(f"Articulo {num}.")  # sin tilde por si acaso
+
+    # Capítulos romanos o numéricos: "capítulo IV", "capitulo 3"
+    for m in re.finditer(r'\bcap[i\.]?[t\.]?[u\.]?[l\.]?[o\.]?\s*\.?\s*([IVXivx\d]+)', q_norm):
+        ref = m.group(1).upper()
+        terms.append(f"CAPÍTULO {ref}")
+        terms.append(f"Capítulo {ref}")
+
+    return terms
 
 class PersistentVectorStore:
     def __init__(self, persist_path: str):
@@ -89,62 +121,89 @@ class PersistentVectorStore:
         
         return len(chunks)
     
+    def _format_result(self, doc: str, metadata: Dict, distance: float) -> Dict:
+        """Convierte un resultado de ChromaDB al formato interno."""
+        try:
+            themes = json.loads(metadata.get('document_themes', '[]'))
+            summary = metadata.get('document_summary', '')
+            has_analysis = metadata.get('has_full_analysis', False)
+        except Exception:
+            themes, summary, has_analysis = [], '', False
+
+        l2_dist = distance
+        base_score = max(0.0, 1.0 - (l2_dist ** 2) / 2.0)
+        if has_analysis:
+            base_score = min(1.0, base_score + 0.05)
+
+        return {
+            'text': doc,
+            'metadata': metadata,
+            'enriched_metadata': {
+                'themes': themes,
+                'summary': summary,
+                'has_full_analysis': has_analysis
+            },
+            'score': base_score,
+            'pdf_title': metadata.get('pdf_title', 'Sin título')
+        }
+
     def search_with_analysis(self, query: str, n_results: int = 4, use_themes: bool = True) -> List[Dict]:
         """
-        Búsqueda mejorada que usa metadatos de análisis
+        Búsqueda híbrida: vectorial + búsqueda literal de texto.
+        Si la consulta menciona artículos o capítulos concretos, busca
+        primero los chunks que los contienen literalmente y los antepone
+        a los resultados vectoriales.
         """
+        seen_texts: set = set()
+        merged: List[Dict] = []
+
+        def _add(item: Dict, score_override: Optional[float] = None) -> None:
+            key = item['text'][:120]
+            if key not in seen_texts:
+                seen_texts.add(key)
+                if score_override is not None:
+                    item = {**item, 'score': score_override}
+                merged.append(item)
+
+        # ── 1. Búsqueda literal para referencias exactas ───────────────────
+        keyword_terms = _extract_keyword_terms(query)
+        for term in keyword_terms:
+            try:
+                kw_results = self.collection.get(
+                    where_document={"$contains": term},
+                    include=["documents", "metadatas"]
+                )
+                if kw_results['documents']:
+                    for doc, meta in zip(kw_results['documents'], kw_results['metadatas']):
+                        item = self._format_result(doc, meta, distance=0.0)
+                        item['score'] = 1.0  # máxima prioridad: coincidencia exacta
+                        _add(item)
+                    print(f"   🔎 Búsqueda literal '{term}': {len(kw_results['documents'])} chunks")
+            except Exception as e:
+                print(f"   ⚠️  Búsqueda literal '{term}' fallida: {e}")
+
+        # ── 2. Búsqueda vectorial (semántica) ──────────────────────────────
         try:
+            vec_n = max(n_results * 2, 12)
             results = self.collection.query(
                 query_texts=[query],
-                n_results=n_results * 2,  # Traer más para filtrar
+                n_results=vec_n,
                 include=["documents", "metadatas", "distances"]
             )
-            
-            # Procesar resultados CON análisis
-            formatted = []
+
             if results['documents']:
                 for i, doc in enumerate(results['documents'][0]):
-                    metadata = results['metadatas'][0][i]
-                    
-                    # Extraer metadatos enriquecidos
-                    try:
-                        themes = json.loads(metadata.get('document_themes', '[]'))
-                        summary = metadata.get('document_summary', '')
-                        has_analysis = metadata.get('has_full_analysis', False)
-                    except:
-                        themes = []
-                        summary = ''
-                        has_analysis = False
-                    
-                    # Score corregido para distancias L2 con embeddings normalizados
-                    # L2 distance en [0,2] -> cosine_sim = 1 - d^2/2 en [0,1]
-                    l2_dist = results['distances'][0][i] if results['distances'] else 0
-                    base_score = max(0.0, 1.0 - (l2_dist ** 2) / 2.0)
-                    
-                    # Bonus por documentos con análisis completo
-                    if has_analysis:
-                        base_score = min(1.0, base_score + 0.05)
-                    
-                    formatted.append({
-                        'text': doc,  # texto completo del chunk sin truncar
-                        'metadata': metadata,
-                        'enriched_metadata': {
-                            'themes': themes,
-                            'summary': summary,
-                            'has_full_analysis': has_analysis
-                        },
-                        'score': base_score,
-                        'pdf_title': metadata.get('pdf_title', 'Sin título')
-                    })
-            
-            # Ordenar por score y limitar
-            formatted.sort(key=lambda x: x['score'], reverse=True)
-            
-            return formatted[:n_results]
-            
+                    meta = results['metadatas'][0][i]
+                    dist = results['distances'][0][i] if results['distances'] else 0
+                    item = self._format_result(doc, meta, dist)
+                    _add(item)
+
         except Exception as e:
-            print(f"❌ Error en búsqueda mejorada: {e}")
-            return []
+            print(f"❌ Error en búsqueda vectorial: {e}")
+
+        # ── 3. Ordenar y devolver ──────────────────────────────────────────
+        merged.sort(key=lambda x: x['score'], reverse=True)
+        return merged[:n_results]
 
     def get_stats(self) -> Dict:
         """Obtiene estadísticas del almacén vectorial"""
