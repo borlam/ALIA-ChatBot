@@ -57,67 +57,73 @@ class PersistentVectorStore:
             )
             print("🆕 Nueva colección creada")
     
+    def _split_text_into_chunks(self, text: str, chunk_size: int = 1400, overlap: int = 200) -> List[str]:
+        """
+        Divide texto en chunks con solapamiento.
+        Estrategia:
+          1. Intenta separar por párrafos dobles (\n\n).
+          2. Si quedan bloques > chunk_size, los subdivide por línea simple (\n).
+          3. Aplica ventana deslizante con overlap para no perder contexto entre chunks.
+        """
+        # Paso 1: separar por \n\n
+        raw_blocks = [b.strip() for b in text.split('\n\n') if b.strip()]
+
+        # Paso 2: subdividir bloques demasiado grandes por \n simple
+        units: List[str] = []
+        for block in raw_blocks:
+            if len(block) <= chunk_size:
+                if len(block) >= 40:          # ignorar líneas muy cortas/vacías
+                    units.append(block)
+            else:
+                lines = [l.strip() for l in block.split('\n') if l.strip() and len(l.strip()) >= 20]
+                units.extend(lines)
+
+        if not units:
+            # Fallback: ventana deslizante pura sobre caracteres
+            return [text[i:i + chunk_size] for i in range(0, len(text), chunk_size - overlap) if text[i:i + chunk_size].strip()]
+
+        # Paso 3: acumular con ventana deslizante
+        chunks: List[str] = []
+        current = ""
+        for unit in units:
+            if len(current) + len(unit) + 2 <= chunk_size:
+                current = (current + "\n\n" + unit).strip() if current else unit
+            else:
+                if current:
+                    chunks.append(current)
+                # Solapamiento: llevar el final del chunk anterior al nuevo
+                overlap_text = current[-overlap:] if len(current) > overlap else current
+                current = (overlap_text + "\n\n" + unit).strip() if overlap_text else unit
+
+        if current.strip():
+            chunks.append(current.strip())
+
+        return chunks
+
     def add_pdf_chunks(self, pdf_id: str, text: str, pdf_metadata: Dict, analysis: Dict) -> int:
         """
-        Añade chunks CON metadatos enriquecidos del análisis
-        
-        Args:
-            analysis: Análisis completo del documento desde DocumentAnalyzer
+        Añade chunks CON metadatos enriquecidos del análisis.
+        Usa chunking robusto con ventana deslizante para manejar
+        documentos con cualquier formato de saltos de línea.
         """
-        # 1. Dividir texto en chunks (lógica existente)
-        paragraphs = [p.strip() for p in text.split('\n\n') if p.strip() and len(p.strip()) > 100]
-        
+        chunks_text = self._split_text_into_chunks(text, chunk_size=1400, overlap=200)
+
+        if not chunks_text:
+            print("   ⚠️  No se generaron chunks (texto vacío o demasiado corto)")
+            return 0
+
         chunks = []
         metadatas = []
         ids = []
-        
-        current_chunk = ""
-        chunk_num = 0
-        
-        for para in paragraphs:
-            if len(current_chunk) + len(para) < 1500:
-                if current_chunk:
-                    current_chunk += "\n\n" + para
-                else:
-                    current_chunk = para
-            else:
-                if current_chunk:
-                    # 2. METADATOS ENRIQUECIDOS con análisis
-                    chunk_metadata = {
-                        'pdf_id': pdf_id,
-                        'pdf_title': pdf_metadata.get('title', pdf_metadata.get('filename', '')),
-                        'pdf_author': pdf_metadata.get('author', ''),
-                        'pdf_pages': pdf_metadata.get('pages', 0),
-                        'chunk_num': chunk_num,
-                        'total_chunks': 0,
-                        'type': 'historia_hispanica',
-                        'source': 'PDF',
-                        'quality': pdf_metadata.get('quality', 'media'),
-                        
-                        # METADATOS ENRIQUECIDOS DEL ANÁLISIS
-                        'document_themes': json.dumps(analysis.get('themes', [])),
-                        'document_summary': analysis.get('summary', '')[:200],
-                        'document_entities': json.dumps(analysis.get('entities', {})),
-                        'analysis_version': analysis.get('analysis_version', '1.0'),
-                        'has_full_analysis': True
-                    }
-                    
-                    chunks.append(current_chunk)
-                    metadatas.append(chunk_metadata)
-                    ids.append(f"{pdf_id}_chunk_{chunk_num}")
-                    
-                    chunk_num += 1
-                    current_chunk = para
-        
-        # Añadir el último chunk pendiente (el bucle no lo guarda en el else final)
-        if current_chunk.strip():
+
+        for chunk_num, chunk_content in enumerate(chunks_text):
             chunk_metadata = {
                 'pdf_id': pdf_id,
                 'pdf_title': pdf_metadata.get('title', pdf_metadata.get('filename', '')),
                 'pdf_author': pdf_metadata.get('author', ''),
                 'pdf_pages': pdf_metadata.get('pages', 0),
                 'chunk_num': chunk_num,
-                'total_chunks': 0,
+                'total_chunks': len(chunks_text),
                 'type': 'historia_hispanica',
                 'source': 'PDF',
                 'quality': pdf_metadata.get('quality', 'media'),
@@ -127,10 +133,10 @@ class PersistentVectorStore:
                 'analysis_version': analysis.get('analysis_version', '1.0'),
                 'has_full_analysis': True
             }
-            chunks.append(current_chunk)
+            chunks.append(chunk_content)
             metadatas.append(chunk_metadata)
             ids.append(f"{pdf_id}_chunk_{chunk_num}")
-        
+
         if chunks:
             self.collection.add(
                 documents=chunks,
@@ -138,7 +144,7 @@ class PersistentVectorStore:
                 ids=ids
             )
             print(f"   📝 Añadidos {len(chunks)} chunks con metadatos enriquecidos")
-        
+
         return len(chunks)
     
     def _format_result(self, doc: str, metadata: Dict, distance: float) -> Dict:
