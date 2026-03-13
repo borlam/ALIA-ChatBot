@@ -148,36 +148,25 @@ class ChatEngine:
 
     def build_prompt_with_confidence(self, question: str, context: str, confidence: str) -> str:
         tone = {
-            "high": "Responde con seguridad y detalle.",
-            "medium": "Responde de forma natural, indicando matices si es necesario.",
-            "low": (
-                "Responde de forma conversacional. "
-                "Si no estás completamente seguro, indícalo de manera natural "
-                "y evita afirmaciones categóricas."
-            )
+            "high": "Responde con seguridad y detalle basándote únicamente en los fragmentos anteriores.",
+            "medium": "Responde de forma natural basándote únicamente en los fragmentos anteriores, indicando matices si es necesario.",
         }[confidence]
 
-        context_block = ""
-        if context.strip():
-            context_block = f"""
-Contexto documental (puede ser parcial, sesgado o no relevante para la pregunta):
+        context_block = f"""Fragmentos de los documentos indexados:
 {context}
 """
 
         return f"""
-Eres regerIA, un asistente experto en historia hispanoamericana.
+Eres un asistente documental. Tu ÚNICA fuente de información son los fragmentos de documentos proporcionados a continuación.
 
-Tu función es explicar procesos históricos con rigor, claridad y sentido crítico.
-No debes resumir documentos ni justificar posturas políticas o imperiales.
-
-Instrucciones IMPORTANTES:
-- Usa el contexto SOLO si aporta información directamente relevante.
-- Si el contexto no es pertinente, ignóralo por completo.
-- Distingue entre hechos históricos comprobados y valoraciones.
-- Evita idealizar o demonizar a personas, pueblos o imperios.
-- No inventes datos concretos si no estás seguro.
+Reglas ESTRICTAS:
+- Responde EXCLUSIVAMENTE con información presente en los fragmentos proporcionados.
+- NO uses conocimiento general ni información que no aparezca en los documentos.
+- Si los fragmentos no contienen información suficiente, responde exactamente: "No encuentro información sobre eso en los documentos disponibles."
+- No inventes, no extrapoles, no añadas contexto externo.
 - {tone}
-- Responde siempre en español, con un estilo claro y cercano.
+- Responde siempre en español.
+
 {context_block}
 Pregunta:
 {question}
@@ -191,17 +180,20 @@ Respuesta:
         start_time = datetime.now()
         
         confidence = self.compute_confidence(context_docs)
-        context = ""
-        if confidence != "low":
-            context = self.build_intelligent_context(question, context_docs)
+
+        # Sin documentos relevantes: responder directamente sin llamar al modelo
+        if confidence == "low" or not context_docs:
+            elapsed = (datetime.now() - start_time).total_seconds()
+            print(f"⚠️  Sin documentos relevantes ({elapsed:.1f}s)")
+            return "No encuentro información sobre eso en los documentos disponibles."
+
+        context = self.build_intelligent_context(question, context_docs)
         prompt = self.build_prompt_with_confidence(question, context, confidence)
 
         if confidence == "high":
             temperature = 0.6
-        elif confidence == "medium":
-            temperature = 0.7
         else:
-            temperature = 0.85
+            temperature = 0.7
 
         # Ajustar tokens según modelo
         model_name = self.model_info["name"]
