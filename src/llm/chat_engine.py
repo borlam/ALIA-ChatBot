@@ -179,13 +179,16 @@ Respuesta:
         
         start_time = datetime.now()
         
-        confidence = self.compute_confidence(context_docs)
-
-        # Sin documentos relevantes: responder directamente sin llamar al modelo
-        if confidence == "low" or not context_docs:
+        # Solo omitir el modelo si no se encontró ningún documento
+        if not context_docs:
             elapsed = (datetime.now() - start_time).total_seconds()
-            print(f"⚠️  Sin documentos relevantes ({elapsed:.1f}s)")
+            print(f"⚠️  Sin documentos en la base vectorial ({elapsed:.1f}s)")
             return "No encuentro información sobre eso en los documentos disponibles."
+
+        confidence = self.compute_confidence(context_docs)
+        # Si hay documentos pero el score es bajo, tratarlos como "medium" igualmente
+        if confidence == "low":
+            confidence = "medium"
 
         context = self.build_intelligent_context(question, context_docs)
         prompt = self.build_prompt_with_confidence(question, context, confidence)
