@@ -145,12 +145,9 @@ class PDFManager:
             print("   🔬 Analizando contenido semántico...")
             content_analysis = self.analyzer.analyze_complete_document(text, original_filename)
             
-            # 4. VERIFICAR DUPLICADOS (por hash de análisis y contenido)
-            analysis_hash = hashlib.md5(
-                f"{content_analysis.get('themes_hash', '')}:{content_analysis.get('summary_hash', '')}"
-                .encode()
-            ).hexdigest()
-            
+            # 4. VERIFICAR DUPLICADOS (por hash del contenido binario del PDF)
+            analysis_hash = hashlib.md5(pdf_bytes).hexdigest()
+
             duplicate_info = self._check_duplicate(analysis_hash, original_filename)
             if duplicate_info['is_duplicate']:
                 print(f"⏭️  PDF duplicado detectado: {duplicate_info['reason']}")
