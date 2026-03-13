@@ -116,15 +116,17 @@ class PersistentVectorStore:
                         summary = ''
                         has_analysis = False
                     
-                    # Calcular score mejorado
-                    base_score = 1 - (results['distances'][0][i] if results['distances'] else 0)
+                    # Score corregido para distancias L2 con embeddings normalizados
+                    # L2 distance en [0,2] -> cosine_sim = 1 - d^2/2 en [0,1]
+                    l2_dist = results['distances'][0][i] if results['distances'] else 0
+                    base_score = max(0.0, 1.0 - (l2_dist ** 2) / 2.0)
                     
                     # Bonus por documentos con análisis completo
                     if has_analysis:
-                        base_score += 0.1
+                        base_score = min(1.0, base_score + 0.05)
                     
                     formatted.append({
-                        'text': doc[:600] + "..." if len(doc) > 600 else doc,
+                        'text': doc,  # texto completo del chunk sin truncar
                         'metadata': metadata,
                         'enriched_metadata': {
                             'themes': themes,

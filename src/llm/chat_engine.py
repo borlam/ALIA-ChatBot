@@ -139,8 +139,8 @@ class ChatEngine:
         for doc in documents[:6]:
             text = doc["text"]
 
-            if len(text) > 400:
-                text = text[:400]
+            if len(text) > 1400:
+                text = text[:1400]
 
             parts.append(text)
 
