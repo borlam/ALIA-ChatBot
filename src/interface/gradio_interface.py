@@ -379,7 +379,7 @@ class GradioInterface:
 
     # ===== FUNCIONES PRINCIPALES (MANTENER SIN CAMBIOS) =====
     
-    def chat_function(self, message: str, history: List, max_chars: int = 2000, num_docs: int = 3):
+    def chat_function(self, message: str, history: List, max_chars: int = 2000, num_docs: int = 6):
         """Función principal del chat"""
         print(f"\n{'='*60}")
         print(f"💬 CHAT: '{message[:80]}...'")

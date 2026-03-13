@@ -194,7 +194,7 @@ class RAGOrchestrator:
             'total_pdfs': self.system_stats.get('total_pdfs', self.system_stats.get('total_documents', 0))
         }
     
-    def query(self, question: str, max_docs: int = 3) -> Dict:
+    def query(self, question: str, max_docs: int = 6) -> Dict:
         """
         Consulta inteligente con análisis pre-existente
         """
